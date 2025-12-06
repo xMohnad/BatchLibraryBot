@@ -51,7 +51,7 @@ def get_step_options(
         return sorted({m.level for m in materials})
 
     if step == 1:
-        return sorted({m.course for m in materials if m.level == answers.get("level")})
+        return sorted({m.term for m in materials if m.level == answers.get("level")})
 
     if step == 2:
         return sorted(

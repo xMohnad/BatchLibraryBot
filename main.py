@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 
     await bot.set_my_commands(
         [
-            BotCommand(command="/add", description="Add new material"),
+            BotCommand(command="/archive", description="Archive a material"),
             BotCommand(command="/remove", description="Remove a material not checked"),
         ],
         scope=BotCommandScopeAllChatAdministrators(),

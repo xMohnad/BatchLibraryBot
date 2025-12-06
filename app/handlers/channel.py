@@ -64,7 +64,7 @@ async def handle_group_media(message: Message, media_events: list[Message]) -> N
 
 
 @router.message(
-    or_f(Command("remove"), Command("add")),
+    or_f(Command("remove"), Command("archive")),
     F.reply_to_message.as_("replied"),
     F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
 )
@@ -80,6 +80,11 @@ async def handle_courses(
         CourseMaterial.course_id == course_id,
         CourseMaterial.isarchived == False,
     )
+    list_courses = await courses.to_list()
+    if not list_courses:
+        return await message.reply(
+            "It seems that this content was already removed or archived previously."
+        )
 
     if courses and "/remove" in (message.text or ""):
         await courses.delete_many()
@@ -87,8 +92,6 @@ async def handle_courses(
             f"Removed successfully. Thanks for your efforts, {event_from_user.full_name}"
         )
         return
-
-    courses = await courses.to_list()
 
     # Bulk copy messages and update database
     async def copy_and_update(course: CourseMaterial):
@@ -105,7 +108,7 @@ async def handle_courses(
             }
         )
 
-    await asyncio.gather(*(copy_and_update(c) for c in courses))
+    await asyncio.gather(*(copy_and_update(c) for c in list_courses))
     await message.reply(
         f"Archived successfully. Thanks for your efforts, {event_from_user.full_name}"
     )

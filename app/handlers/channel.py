@@ -5,7 +5,7 @@ import re
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus
-from aiogram.filters import Command
+from aiogram.filters import Command, or_f
 from aiogram.types import Message, User
 
 from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
@@ -64,8 +64,7 @@ async def handle_group_media(message: Message, media_events: list[Message]) -> N
 
 
 @router.message(
-    Command("remove"),
-    Command("add"),
+    or_f(Command("remove"), Command("add")),
     F.reply_to_message.as_("replied"),
     F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
 )
@@ -82,7 +81,7 @@ async def handle_courses(
         CourseMaterial.isarchived == False,
     )
 
-    if courses and message.text == "/remove":
+    if courses and "/remove" in (message.text or ""):
         await courses.delete_many()
         await message.reply(
             f"Removed successfully. Thanks for your efforts, {event_from_user.full_name}"

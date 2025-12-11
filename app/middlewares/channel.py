@@ -26,7 +26,7 @@ class MediaMiddleware(BaseMiddleware):
         event: Message | CallbackQuery,
         data: dict[str, Any],
     ) -> Any:
-        data["media_events"] = []
+        data["media_events"] = [event]
         if isinstance(event, Message) and event.media_group_id:
             try:
                 self.medias[event.media_group_id].append(event)

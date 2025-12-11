@@ -1,27 +1,58 @@
 from __future__ import annotations
 
+import re
+
+from aiogram.types import Message
 from beanie import Document
 from pydantic.fields import Field
+
+from app.utils import NUMBER, course_similarity, get_level, get_term
 
 
 class CourseMaterial(Document):
     """Represents a course material with metadata"""
 
-    course_id: str | int
-    level: str
-    term: str
+    level: int = Field(default_factory=get_level)
+    term: int = Field(default_factory=get_term)
     course: str
     title: str
+    course_id: int
     message_id: int
     from_chat_id: int
-    isarchived: bool = Field(default=False)
 
     @property
     def formatted_info(self) -> str:
         """Get formatted course information"""
         return (
-            f"المستوى: {self.level}\n"
-            f"الترم: {self.term}\n"
-            f"المقرر: {self.course}\n"
-            f"العنوان: {self.title}"
+            f"{self.course} | {self.title}\n\n"
+            f"#مستوى_{self.level_word}\n"
+            f"#ترم_{self.term_word}"
+        )
+
+    @property
+    def level_word(self) -> str:
+        return NUMBER[self.level]
+
+    @property
+    def term_word(self) -> str:
+        return NUMBER[self.term]
+
+    @classmethod
+    async def parse_course(
+        cls,
+        message: Message,
+        match: re.Match[str],
+        **kwargs,
+    ) -> CourseMaterial:
+        """Parse course information from a message caption."""
+        course = await course_similarity(match.group("course"))
+        title = match.group("title")
+
+        return cls(
+            course_id=message.message_id,
+            course=course.strip(),
+            title=title.strip(),
+            message_id=message.message_id,
+            from_chat_id=message.chat.id,
+            **kwargs,
         )

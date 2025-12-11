@@ -48,17 +48,20 @@ def get_step_options(
     step: int, answers: dict[str, int | str], materials: list[CourseMaterial]
 ) -> list[str]:
     if step == 0:
-        return sorted({m.level for m in materials})
+        return sorted({m.level_word for m in materials})
 
     if step == 1:
-        return sorted({m.term for m in materials if m.level == answers.get("level")})
+        return sorted(
+            {m.term_word for m in materials if m.level_word == answers.get("level")}
+        )
 
     if step == 2:
         return sorted(
             {
                 m.course
                 for m in materials
-                if m.level == answers.get("level") and m.term == answers.get("term")
+                if m.level_word == answers.get("level")
+                and m.term_word == answers.get("term")
             }
         )
 
@@ -67,8 +70,8 @@ def get_step_options(
             {
                 m.title
                 for m in materials
-                if m.level == answers.get("level")
-                and m.term == answers.get("term")
+                if m.level_word == answers.get("level")
+                and m.term_word == answers.get("term")
                 and m.course == answers.get("course")
             }
         )
@@ -85,7 +88,7 @@ class BrowseScene(Scene, state="browse"):
         """
         data = await state.get_data()
         if step == 0 or "materials" not in data:
-            materials = await CourseMaterial.find({"isarchived": True}).to_list()
+            materials = await CourseMaterial.find().to_list()
             await state.update_data(materials=materials)
             return materials
         return data["materials"]
@@ -133,8 +136,8 @@ class BrowseScene(Scene, state="browse"):
                 [
                     m.message_id
                     for m in materials
-                    if m.level == answers.get("level")
-                    and m.term == answers.get("term")
+                    if m.level_word == answers.get("level")
+                    and m.term_word == answers.get("term")
                     and m.course == answers.get("course")
                     and m.title == message.text
                 ],

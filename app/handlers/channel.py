@@ -4,9 +4,7 @@ import asyncio
 import re
 
 from aiogram import Bot, F, Router
-from aiogram.enums import ChatMemberStatus
-from aiogram.filters import Command, or_f
-from aiogram.types import Message, User
+from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
 from app.database.models import CourseMaterial
@@ -16,99 +14,55 @@ router = Router(name=__name__)
 router.message.filter(F.chat.id == CHANNEL_ID)
 
 
-def parse_course(message: Message, match: re.Match[str]) -> CourseMaterial:
-    """Parse course information from a message caption."""
-    level, term, course, title = match.groups()
-    return CourseMaterial(
-        course_id=message.media_group_id or message.message_id,
-        level=level.strip(),
-        term=term.strip(),
-        course=course.strip(),
-        title=title.strip(),
-        message_id=message.message_id,
-        from_chat_id=message.chat.id,
+async def copy_and_update(course: CourseMaterial, bot: Bot) -> CourseMaterial:
+    """Copy message to archive and insert course."""
+    copied = await bot.copy_message(
+        ARCHIVE_CHANNEL,
+        course.from_chat_id,
+        course.message_id,
+        caption=course.formatted_info,
     )
+    course.message_id = copied.message_id
+    await course.insert()
+    return course
 
 
-async def is_admin(bot: Bot, user_id: int) -> bool:
-    """Check if a user is admin in the channel."""
-    member = await bot.get_chat_member(CHANNEL_ID, user_id)
-    return member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR]
+async def update_existing(
+    course: CourseMaterial, original: CourseMaterial, bot: Bot
+) -> CourseMaterial:
+    """Update an existing archived message and DB entry."""
+    updated = await original.set(course.model_dump(exclude={"id", "message_id"}))
+    await bot.edit_message_caption(
+        chat_id=ARCHIVE_CHANNEL,
+        message_id=updated.message_id,
+        caption=updated.formatted_info,
+    )
+    return updated
 
 
-async def insert_courses(messages: list[Message], match: re.Match[str]) -> None:
-    """Insert multiple course materials into the database in bulk."""
-    courses = [parse_course(msg, match) for msg in messages]
-    if courses:
-        await CourseMaterial.insert_many(courses)
-
-
-@router.message(
-    F.caption.regexp(CAPTION_PATTERN).as_("match"),
-    F.content_type.in_(SUPPORTED_MEDIA),
-    F.media_group_id.is_(None),
-)
-async def handle_media(message: Message, match: re.Match) -> None:
-    """Handle single media messages."""
-    await insert_courses([message], match)
-    await message.reply("تم الإستلام. بانتظار موافقة الإدارة.")
-
-
-@router.message(F.content_type.in_(SUPPORTED_MEDIA), F.media_group_id)
-async def handle_group_media(message: Message, media_events: list[Message]) -> None:
-    """Handle media groups."""
+@router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
+async def handle_media(message: Message, bot: Bot, media_events: list[Message]) -> None:
+    """Handle new media posts with caption."""
     caption = media_events[-1].caption or ""
     if match := CAPTION_PATTERN.search(caption):
-        await insert_courses(media_events, match)
-        await message.reply("تم الإستلام. بانتظار موافقة الإدارة.")
+        courses = [
+            await CourseMaterial.parse_course(msg, match) for msg in media_events
+        ]
+        await asyncio.gather(*(copy_and_update(c, bot) for c in courses))
 
 
-@router.message(
-    or_f(Command("remove"), Command("archive")),
-    F.reply_to_message.as_("replied"),
-    F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
+@router.edited_channel_post(
+    F.content_type.in_(SUPPORTED_MEDIA),
+    F.caption.regexp(CAPTION_PATTERN).as_("match"),
 )
-async def handle_courses(
-    message: Message, replied: Message, bot: Bot, event_from_user: User
-):
-    if not await is_admin(bot, event_from_user.id):
-        await message.reply("You are NOT an admin.")
-        return
-
-    course_id = replied.media_group_id or replied.message_id
-    courses = CourseMaterial.find(
-        CourseMaterial.course_id == course_id,
-        CourseMaterial.isarchived == False,
+async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
+    """Handle edited media posts."""
+    course = await CourseMaterial.parse_course(message, match)
+    original = await CourseMaterial.find_one(
+        CourseMaterial.course_id == message.message_id
     )
-    list_courses = await courses.to_list()
-    if not list_courses:
-        return await message.reply(
-            "It seems that this content was already removed or archived previously."
-        )
 
-    if courses and "/remove" in (message.text or ""):
-        await courses.delete_many()
-        await message.reply(
-            f"Removed successfully. Thanks for your efforts, {event_from_user.full_name}"
-        )
-        return
-
-    # Bulk copy messages and update database
-    async def copy_and_update(course: CourseMaterial):
-        copied_msg = await bot.copy_message(
-            ARCHIVE_CHANNEL,
-            course.from_chat_id,
-            course.message_id,
-            caption=course.formatted_info,
-        )
-        await course.set(
-            {
-                CourseMaterial.message_id: copied_msg.message_id,
-                CourseMaterial.isarchived: True,
-            }
-        )
-
-    await asyncio.gather(*(copy_and_update(c) for c in list_courses))
-    await message.reply(
-        f"Archived successfully. Thanks for your efforts, {event_from_user.full_name}"
-    )
+    if original:
+        await update_existing(course, original, bot)
+    else:
+        await copy_and_update(course, bot)

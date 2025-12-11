@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.22.0",
+    "async-lru>=2.0.5",
     "beanie>=2.0.1",
     "environs>=14.5.0",
     "fastapi>=0.123.9",
+    "rapidfuzz>=3.14.3",
     "uvicorn>=0.38.0",
 ]
 

@@ -45,14 +45,6 @@ async def lifespan(app: FastAPI):
         scope=BotCommandScopeAllPrivateChats(),
     )
 
-    await bot.set_my_commands(
-        [
-            BotCommand(command="/archive", description="Archive a material"),
-            BotCommand(command="/remove", description="Remove a material not checked"),
-        ],
-        scope=BotCommandScopeAllChatAdministrators(),
-    )
-
     logger.info("Webhook set and bot ready")
 
     yield

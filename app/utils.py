@@ -9,9 +9,8 @@ from rapidfuzz import fuzz, process
 
 from app.data.config import CHANNEL_ID
 
-CAPTION_PATTERN = re.compile(
-    r"/^(?P<course>.+\(.+\))\s*\|\s*(?P<title>.+)$/gm",
-)
+CAPTION_PATTERN = re.compile(r"(?P<course>.+\(.+\))\s*\|\s*(?P<title>.+)")
+
 
 SUPPORTED_MEDIA = {"video", "document", "audio"}
 WORDS = {

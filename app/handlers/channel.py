@@ -27,19 +27,6 @@ async def copy_and_update(course: CourseMaterial, bot: Bot) -> CourseMaterial:
     return course
 
 
-async def update_existing(
-    course: CourseMaterial, original: CourseMaterial, bot: Bot
-) -> CourseMaterial:
-    """Update an existing archived message and DB entry."""
-    updated = await original.set(course.model_dump(exclude={"id", "message_id"}))
-    await bot.edit_message_caption(
-        chat_id=ARCHIVE_CHANNEL,
-        message_id=updated.message_id,
-        caption=updated.formatted_info,
-    )
-    return updated
-
-
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
 async def handle_media(message: Message, bot: Bot, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
@@ -63,6 +50,11 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
     )
 
     if original:
-        await update_existing(course, original, bot)
+        updated = await original.set(course.model_dump(exclude={"id", "message_id"}))
+        await bot.edit_message_caption(
+            chat_id=ARCHIVE_CHANNEL,
+            message_id=updated.message_id,
+            caption=updated.formatted_info,
+        )
     else:
         await copy_and_update(course, bot)

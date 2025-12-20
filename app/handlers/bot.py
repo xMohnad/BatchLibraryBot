@@ -3,11 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram import Bot, F, Router, html
+from aiogram.dispatcher.event.bases import NextMiddlewareType
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.scene import Scene, SceneRegistry, on
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardRemove, User
+from aiogram.fsm.scene import Scene, on
+from aiogram.fsm.scene import SceneRegistry as _SceneRegistry
+from aiogram.types import (
+    KeyboardButton,
+    Message,
+    ReplyKeyboardRemove,
+    TelegramObject,
+    User,
+)
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from app.data.config import ARCHIVE_CHANNEL
@@ -139,6 +147,20 @@ class BrowseScene(Scene, state="browse"):
     @on.message.exit()
     async def exit(self, message: Message) -> None:
         await message.answer("تم الخروج.", reply_markup=ReplyKeyboardRemove())
+
+
+class SceneRegistry(_SceneRegistry):
+    async def _middleware(
+        self,
+        handler: NextMiddlewareType[TelegramObject],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        # we don't need aiogram Scene handle all events issues/1743
+        if "state" in data:
+            return await super()._middleware(handler, event, data)
+
+        return await handler(event, data)
 
 
 SceneRegistry(router).add(BrowseScene)

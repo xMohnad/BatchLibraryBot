@@ -11,7 +11,7 @@ DIR = Path(__file__).absolute().parent.parent
 
 TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = env.int("CHANNEL_ID", default=0)
-ARCHIVE_CHANNEL = env.str("ARCHIVE_CHANNEL", default="")
+ARCHIVE_CHANNEL = env.int("ARCHIVE_CHANNEL", default=0)
 
 HOST_URL = env.str("HOST_URL", None)
 WEBHOOK_EP = env.str("WEBHOOK_ENDPOINT", "webhook")

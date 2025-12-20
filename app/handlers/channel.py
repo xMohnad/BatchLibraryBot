@@ -8,10 +8,12 @@ from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
 from app.database.models import CourseMaterial
-from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA
+from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA, IdFilter
 
 router = Router(name=__name__)
-router.message.filter(F.chat.id == CHANNEL_ID)
+
+router.channel_post.filter(IdFilter(CHANNEL_ID))
+router.edited_channel_post.filter(IdFilter(CHANNEL_ID))
 
 
 async def copy_and_update(course: CourseMaterial, bot: Bot) -> CourseMaterial:

@@ -4,10 +4,21 @@ from datetime import datetime
 
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
+from aiogram.filters import Filter
+from aiogram.types import Message
 from async_lru import alru_cache
 from rapidfuzz import fuzz, process
 
 from app.data.config import CHANNEL_ID
+
+
+class IdFilter(Filter):
+    def __init__(self, id: int) -> None:
+        self.id = id
+
+    async def __call__(self, message: Message) -> bool:
+        return message.chat.id == self.id
+
 
 CAPTION_PATTERN = re.compile(r"(?P<course>.+\(.+\))\s*\|\s*(?P<title>.+)")
 

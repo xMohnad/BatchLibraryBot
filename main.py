@@ -61,7 +61,7 @@ async def index():
     return "<h1>Bot is running</h1>"
 
 
-@app.webhooks.post(f"/{WEBHOOK_EP}", include_in_schema=False)
+@app.post(f"/{WEBHOOK_EP}", include_in_schema=False)
 async def telegram_webhook(request: Request):
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if secret != WEBHOOK_SECRET:

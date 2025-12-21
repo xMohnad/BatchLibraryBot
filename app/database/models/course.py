@@ -47,12 +47,8 @@ class CourseMaterial(Document):
         """Parse course information from a message caption."""
         course = await course_similarity(match.group("course"))
         title = match.group("title")
+        kwargs.setdefault("course_id", message.message_id)
+        kwargs.setdefault("message_id", message.message_id)
+        kwargs.setdefault("from_chat_id", message.chat.id)
 
-        return cls(
-            course_id=message.message_id,
-            course=course.strip(),
-            title=title.strip(),
-            message_id=message.message_id,
-            from_chat_id=message.chat.id,
-            **kwargs,
-        )
+        return cls(course=course.strip(), title=title.strip(), **kwargs)

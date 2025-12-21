@@ -25,7 +25,7 @@ class CourseMaterial(Document):
         """Get formatted course information"""
         return (
             f"{self.course} | {self.title}\n\n"
-            f"#مستوى_{self.level_word}\n"
+            f"#مستوى_{self.level_word} "
             f"#ترم_{self.term_word}"
         )
 

@@ -79,7 +79,7 @@ def get_term(semester: int = get_semester()) -> int:
     return 1 if semester % 2 == 1 else 2
 
 
-def resolve_course_similarity(course: str, existing: list[str], threshold=80) -> str:
+def resolve_course_similarity(course: str, existing: list[str], threshold=90) -> str:
     logger.info(f"Checking similarity for: '{course}'")
 
     match = process.extractOne(course, existing, scorer=fuzz.WRatio)

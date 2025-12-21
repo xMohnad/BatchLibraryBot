@@ -83,6 +83,7 @@ class BrowseScene(Scene, state="browse"):
         materials = await self.get_materials(state)
 
         if step >= len(STEPS_CONFIG):
+            answers = {**data.get("answers", {}), "title": message.text}
             final_files: list[int] = self.get_valid_options(  # pyright: ignore[reportAssignmentType]
                 materials, answers, "message_id"
             )

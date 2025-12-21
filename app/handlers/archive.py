@@ -23,11 +23,10 @@ async def handle_forward_media(
     message: Message, origin: MessageOriginChannel, bot: Bot
 ) -> None:
     """Handle new forward media post."""
-    await message.delete()
     id = await bot.copy_message(
         ARCHIVE_CHANNEL,
-        origin.chat.id,
-        origin.message_id,
+        message.chat.id,
+        message.message_id,
     )
 
     if match := CAPTION_PATTERN.search(message.caption or ""):
@@ -39,6 +38,8 @@ async def handle_forward_media(
             from_chat_id=origin.chat.id,
         )
         await course.insert()
+
+    await message.delete()
 
 
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))

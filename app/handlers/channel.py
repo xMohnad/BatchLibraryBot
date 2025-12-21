@@ -47,11 +47,9 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
 async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
     """Handle edited media posts."""
     course = await CourseMaterial.parse_course(message, match)
-    original = await CourseMaterial.find_one(
+    if original := await CourseMaterial.find_one(
         CourseMaterial.course_id == message.message_id
-    )
-
-    if original:
+    ):
         updated = await original.set(course.model_dump(exclude={"id", "message_id"}))
         await bot.edit_message_caption(
             chat_id=ARCHIVE_CHANNEL,

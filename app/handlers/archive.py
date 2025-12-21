@@ -58,14 +58,13 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
     F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
     F.reply_to_message.caption.regexp(CAPTION_PATTERN),
     F.reply_to_message.as_("replied"),
-    F.reply_to_message.message_id.as_("message_id"),
     F.text.contains("del"),
 )
-async def on_del_archive(message: Message, replied: Message, message_id: int) -> None:
+async def on_del_archive(message: Message, replied: Message) -> None:
     """Handle edited media post."""
 
     if original := await CourseMaterial.find_one(
-        CourseMaterial.message_id == message_id
+        CourseMaterial.message_id == replied.message_id
     ):
         await original.delete()
         await replied.delete()

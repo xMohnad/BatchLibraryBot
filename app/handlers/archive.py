@@ -72,26 +72,15 @@ async def on_del_archive(message: Message, replied: Message) -> None:
     await message.delete()
 
 
-@router.channel_post(
-    F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
-    F.reply_to_message.caption.regexp(CAPTION_PATTERN).as_("match"),
-    F.reply_to_message.message_id.as_("message_id"),
-    F.text.contains("edit"),
-)
-@router.edited_channel_post(
-    F.content_type.in_(SUPPORTED_MEDIA),
-    F.caption.regexp(CAPTION_PATTERN).as_("match"),
-    F.message_id.as_("message_id"),
-)
-async def on_edit_archive(
-    message: Message, match: re.Match[str], message_id: int
-) -> None:
-    """Handle edited media post."""
+async def upsert_course_material(source: Message, match: re.Match[str]) -> None:
+    """Create or update CourseMaterial based on message content."""
+    course = await CourseMaterial.parse_course(source, match)
 
-    course = await CourseMaterial.parse_course(message, match)
-    if original := await CourseMaterial.find_one(
-        CourseMaterial.message_id == message_id,
-    ):
+    original = await CourseMaterial.find_one(
+        CourseMaterial.message_id == source.message_id
+    )
+
+    if original:
         await original.set(
             course.model_dump(
                 exclude={
@@ -105,5 +94,27 @@ async def on_edit_archive(
     else:
         await course.insert()
 
-    if message.reply_to_message and "edit" in (message.text or ""):
-        await message.delete()
+
+@router.channel_post(
+    F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
+    F.reply_to_message.caption.regexp(CAPTION_PATTERN).as_("match"),
+    F.reply_to_message.as_("replied"),
+    F.text.contains("edit"),
+)
+async def on_edit_archive_reply(
+    message: Message,
+    match: re.Match[str],
+    replied: Message,
+) -> None:
+    """Handle edit command sent as a reply."""
+    await upsert_course_material(replied, match)
+    await message.delete()
+
+
+@router.edited_channel_post(
+    F.content_type.in_(SUPPORTED_MEDIA),
+    F.caption.regexp(CAPTION_PATTERN).as_("match"),
+)
+async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
+    """Handle direct media edit in channel."""
+    await upsert_course_material(message, match)

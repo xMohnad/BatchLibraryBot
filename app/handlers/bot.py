@@ -108,7 +108,7 @@ class BrowseScene(Scene, state="browse"):
             await self.wizard.exit()
         elif text == BTN_RESTART:
             await state.update_data(answers={})
-            await self.wizard.back(step=0)
+            await self.wizard.retake(step=0)
         elif text == BTN_BACK:
             data = await state.get_data()
             step = data.get("step", 0)

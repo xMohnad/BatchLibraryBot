@@ -32,7 +32,7 @@ WORDS = {
 }
 NUMBER = {v: k for k, v in WORDS.items()}
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logging.getLogger("pymongo").setLevel(logging.WARNING)
 
 logger = logging.getLogger("Batch7LibraryBot")

@@ -146,7 +146,8 @@ class BrowseScene(Scene, state="browse"):
         await message.answer("الرجاء اختيار خيار من القائمة فقط.")
 
     @on.message.exit()
-    async def exit(self, message: Message) -> None:
+    async def exit(self, message: Message, state: FSMContext) -> None:
+        await state.clear()
         await message.answer("تم الخروج.", reply_markup=ReplyKeyboardRemove())
 
 

@@ -148,7 +148,8 @@ class BrowseScene(Scene, state="browse"):
     @on.message.exit()
     async def exit(self, message: Message, state: FSMContext) -> None:
         await state.clear()
-        await message.answer("تم الخروج.", reply_markup=ReplyKeyboardRemove())
+        if message.text == BTN_EXIT:
+            await message.answer("تم الخروج.", reply_markup=ReplyKeyboardRemove())
 
 
 class SceneRegistry(_SceneRegistry):

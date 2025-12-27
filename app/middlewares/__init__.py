@@ -8,6 +8,7 @@ from .channel import middlewares as channel_middleware
 async def setup_middlewares(dp: Dispatcher):
     for middleware in channel_middleware:
         dp.channel_post.middleware(middleware())
+        dp.message.middleware(middleware())
 
 
 __all__ = ["setup_middlewares"]

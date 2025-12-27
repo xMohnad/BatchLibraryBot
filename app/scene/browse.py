@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 from aiogram import Bot, F
 from aiogram.fsm.context import FSMContext
@@ -9,14 +9,10 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from app.data.config import ARCHIVE_CHANNEL
-from app.database.models import CourseMaterial
+from app.database.models import Action, CourseMaterial
 
-# --- Constants & Config ---
-BTN_BACK = "🔙 Back"
-BTN_RESTART = "🔄 Restart"
-BTN_EXIT = "🚫 Exit"
-
-STEPS_CONFIG = [
+# --- Constants ---
+STEPS_CONFIG: Final[list[tuple[str, str]]] = [
     ("level_word", "اختر المستوى:"),
     ("term_word", "اختر الترم:"),
     ("course", "اختر المقرر:"),
@@ -46,11 +42,11 @@ class BrowseScene(Scene, state="browse"):
 
         if step > 0:
             kb.row(
-                KeyboardButton(text=BTN_BACK),
-                KeyboardButton(text=BTN_RESTART),
+                KeyboardButton(text=Action.back),
+                KeyboardButton(text=Action.restart),
             )
 
-        kb.row(KeyboardButton(text=BTN_EXIT))
+        kb.row(KeyboardButton(text=Action.exit))
         return kb
 
     def get_valid_options(
@@ -100,14 +96,14 @@ class BrowseScene(Scene, state="browse"):
         )
         await state.update_data(step=step)
 
-    @on.message(F.text.in_({BTN_BACK, BTN_RESTART, BTN_EXIT}))
+    @on.message(F.text.in_({Action.back, Action.restart, Action.exit}))
     async def navigation(self, message: Message, state: FSMContext) -> None:
         text = message.text
 
-        if text == BTN_EXIT:
+        if text == Action.exit:
             return await self.wizard.exit()
 
-        if text == BTN_RESTART:
+        if text == Action.restart:
             await state.update_data(answers={})
             return await self.wizard.retake(step=0)
 
@@ -147,5 +143,5 @@ class BrowseScene(Scene, state="browse"):
     @on.message.exit()
     async def exit(self, message: Message, state: FSMContext) -> None:
         await state.clear()
-        if message.text == BTN_EXIT:
+        if message.text == Action.exit:
             await message.answer("تم الخروج.", reply_markup=ReplyKeyboardRemove())

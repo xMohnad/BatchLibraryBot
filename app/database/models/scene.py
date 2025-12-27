@@ -27,3 +27,7 @@ class Action(str, Enum):
 
     filename = "filename"
     caption = "caption"
+
+    back = "🔙 Back"
+    restart = "🔄 Restart"
+    exit = "🚫 Exit"

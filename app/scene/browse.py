@@ -23,10 +23,9 @@ STEPS_CONFIG: Final[list[tuple[str, str]]] = [
 class BrowseScene(Scene, state="browse"):
     async def get_materials(self, state: FSMContext) -> list[CourseMaterial]:
         """Load all needed data once, and reuse it in all next steps."""
-        step = await state.get_value("step", 0)
-        materials = await state.get_value("materials", 0)
+        materials = await state.get_value("materials", [])
 
-        if step == 0 or materials:
+        if not materials:
             materials = await CourseMaterial.find().to_list()
             await state.update_data(materials=materials)
             return materials
@@ -68,16 +67,17 @@ class BrowseScene(Scene, state="browse"):
         )
 
     @on.message.enter()
-    async def on_enter(
-        self, message: Message, bot: Bot, state: FSMContext, step: int = 0
-    ) -> Any:
+    async def on_enter(self, message: Message, bot: Bot, state: FSMContext) -> Any:
         answers = await state.get_value("answers", {})
+        step = len(answers)
         materials = await self.get_materials(state)
 
         # Final step → send files
-        if step >= len(STEPS_CONFIG):
-            answers = {**answers, "title": message.text}
+        if "title" in answers:
             files = self.get_valid_options(materials, answers, "message_id")
+            del answers["title"]
+            await state.update_data(answers=answers)
+
             return await bot.copy_messages(
                 message.chat.id,
                 ARCHIVE_CHANNEL,
@@ -94,7 +94,6 @@ class BrowseScene(Scene, state="browse"):
                 resize_keyboard=True
             ),
         )
-        await state.update_data(step=step)
 
     @on.message(F.text.in_({Action.back, Action.restart, Action.exit}))
     async def navigation(self, message: Message, state: FSMContext) -> None:
@@ -105,22 +104,21 @@ class BrowseScene(Scene, state="browse"):
 
         if text == Action.restart:
             await state.update_data(answers={})
-            return await self.wizard.retake(step=0)
+            return await self.wizard.retake()
 
         # BTN_BACK
-        step = await state.get_value("step", 0)
+        answers = await state.get_value("answers", {})
+        step = len(answers)
 
         if step > 0:
-            answers = await state.get_value("answers", {})
-            prev_field = STEPS_CONFIG[step - 1][0]
-            answers.pop(prev_field, None)
+            answers.pop(STEPS_CONFIG[step - 1][0], None)
             await state.update_data(answers=answers)
-            await self.wizard.retake(step=step - 1)
+            await self.wizard.retake()
 
     @on.message(F.text)
     async def answer(self, message: Message, state: FSMContext) -> None:
-        step = await state.get_value("step", 0)
         answers = await state.get_value("answers", {})
+        step = len(answers)
 
         materials = await self.get_materials(state)
         field = STEPS_CONFIG[step][0]
@@ -128,13 +126,12 @@ class BrowseScene(Scene, state="browse"):
 
         if message.text not in valid_options:
             await self.unknown_message(message)
-            return await self.wizard.retake(step=step)
+            return await self.wizard.retake()
 
-        if step < len(STEPS_CONFIG) - 1:
-            answers[field] = message.text
+        answers[field] = message.text
 
         await state.update_data(answers=answers)
-        await self.wizard.retake(step=step + 1)
+        await self.wizard.retake()
 
     @on.message()
     async def unknown_message(self, message: Message) -> None:

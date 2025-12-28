@@ -73,9 +73,9 @@ class BrowseScene(Scene, state="browse"):
         materials = await self.get_materials(state)
 
         # Final step → send files
-        if "title" in answers:
+        if step == len(STEPS_CONFIG):
             files = self.get_valid_options(materials, answers, "message_id")
-            del answers["title"]
+            answers.popitem()
             await state.update_data(answers=answers)
 
             return await bot.copy_messages(
@@ -107,11 +107,8 @@ class BrowseScene(Scene, state="browse"):
             return await self.wizard.retake()
 
         # BTN_BACK
-        answers = await state.get_value("answers", {})
-        step = len(answers)
-
-        if step > 0:
-            answers.pop(STEPS_CONFIG[step - 1][0], None)
+        if answers := await state.get_value("answers", {}):
+            answers.popitem()
             await state.update_data(answers=answers)
             await self.wizard.retake()
 
@@ -120,13 +117,15 @@ class BrowseScene(Scene, state="browse"):
         answers = await state.get_value("answers", {})
         step = len(answers)
 
+        if step >= len(STEPS_CONFIG):
+            return await self.wizard.retake()
+
         materials = await self.get_materials(state)
         field = STEPS_CONFIG[step][0]
         valid_options = self.get_valid_options(materials, answers, field)
 
         if message.text not in valid_options:
-            await self.unknown_message(message)
-            return await self.wizard.retake()
+            return await self.unknown_message(message)
 
         answers[field] = message.text
 

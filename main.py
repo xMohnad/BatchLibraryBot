@@ -38,8 +38,9 @@ async def lifespan(app: FastAPI):
     await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
     await bot.set_my_commands(
         [
-            BotCommand(command="/start", description="start chat."),
-            BotCommand(command="/browse", description="browse material."),
+            BotCommand(command="/start", description="Start chatting"),
+            BotCommand(command="/browse", description="Browse available materials"),
+            BotCommand(command="/img2pdf", description="Convert images into a PDF"),
         ],
         scope=BotCommandScopeAllPrivateChats(),
     )

@@ -13,6 +13,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
     PhotoSize,
+    ReplyKeyboardRemove,
 )
 from PIL import Image
 
@@ -99,7 +100,8 @@ class Img2PdfScene(Scene, state="img2pdf"):
             await state.update_data(images=[])
             answer = await message.answer(
                 "قم بإرسال الصور المراد تحويلها إلى PDF.\n\n"
-                "💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به"
+                "💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
+                reply_markup=ReplyKeyboardRemove(),
             )
             await state.update_data(answer=answer)
 

@@ -10,6 +10,8 @@ dependencies = [
     "beanie>=2.0.1",
     "environs>=14.5.0",
     "fastapi>=0.123.9",
+    "olefile>=0.47",
+    "pillow>=12.0.0",
     "rapidfuzz>=3.14.3",
     "uvicorn>=0.38.0",
 ]

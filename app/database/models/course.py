@@ -20,6 +20,13 @@ class CourseMaterial(Document):
     message_id: int
     from_chat_id: int
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CourseMaterial):
+            return NotImplemented
+
+        include = {"level", "term", "course", "title"}
+        return self.model_dump(include=include) == other.model_dump(include=include)
+
     @property
     def formatted_info(self) -> str:
         """Get formatted course information"""

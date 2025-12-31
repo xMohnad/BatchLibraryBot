@@ -157,7 +157,6 @@ class Img2PdfScene(Scene, state="img2pdf"):
 
             await self.send_pdf_result(message, state, file)
             await state.update_data(file=file)
-            await message.delete()
         finally:
             pdf_buffer.close()
             for img in images_io:

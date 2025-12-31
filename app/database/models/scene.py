@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 
 from pydantic import BaseModel, field_validator
 
@@ -6,7 +7,7 @@ from pydantic import BaseModel, field_validator
 class File(BaseModel):
     """Represents a generated PDF file with editable metadata."""
 
-    data: bytes
+    filepath: Path
     filename: str = "images.pdf"
     caption: str | None = None
 

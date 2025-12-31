@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import io
-from typing import BinaryIO
+import tempfile
+from pathlib import Path
 
 from aiogram import Bot, F
 from aiogram.fsm.context import FSMContext
@@ -21,16 +21,18 @@ from app.database.models import Action, File
 
 
 class Img2PdfScene(Scene, state="img2pdf"):
+    tmp = Path(tempfile.gettempdir())
+
     async def send_pdf_result(self, message: Message, state: FSMContext, file: File):
         """Send the generated PDF to the user."""
         answer = await message.answer_document(
-            BufferedInputFile(file.data, file.filename),
+            BufferedInputFile.from_file(file.filepath, file.filename),
             caption=file.caption,
             reply_markup=self.edit_keyboard(),
         )
 
         await self.delete_prev(state)
-        await state.update_data(answer=answer)
+        await state.update_data(answer=answer, file=file)
 
     async def process_images(
         self, message: Message, state: FSMContext, new_file_ids: list[str]
@@ -138,29 +140,23 @@ class Img2PdfScene(Scene, state="img2pdf"):
 
         await callback.answer("يتم التحويل...")
 
-        images_io: list[BinaryIO] = []
-        for image_id in stored_images:
-            if file := await bot.download(image_id):
-                images_io.append(file)
+        imgs: list[Path] = []
+        for id in stored_images:
+            img: Path = self.tmp / id
+            if not img.is_file():
+                await bot.download(id, img)
+            imgs.append(img)
 
-        pdf_buffer = io.BytesIO()
-        try:
-            pil_images = [Image.open(img).convert("RGB") for img in images_io]
-            pil_images[0].save(
-                pdf_buffer,
-                format="PDF",
-                save_all=True,
-                append_images=pil_images[1:],
-            )
-            pdf_buffer.seek(0)
-            file = File(data=pdf_buffer.read())
+        pdf_path = self.tmp / f"{callback.from_user.id}.pdf"
+        pil_images = [Image.open(img).convert("RGB") for img in imgs]
+        pil_images[0].save(
+            pdf_path,
+            format="PDF",
+            save_all=True,
+            append_images=pil_images[1:],
+        )
 
-            await self.send_pdf_result(message, state, file)
-            await state.update_data(file=file)
-        finally:
-            pdf_buffer.close()
-            for img in images_io:
-                img.close()
+        await self.send_pdf_result(message, state, File(filepath=pdf_path))
 
     @on.callback_query(F.data.in_({Action.caption, Action.filename}))
     async def on_edit_request(self, callback: CallbackQuery, state: FSMContext):

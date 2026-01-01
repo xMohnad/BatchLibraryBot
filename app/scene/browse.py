@@ -104,7 +104,7 @@ class BrowseScene(Scene, state="browse"):
             return await self.wizard.exit()
 
         if text == Action.restart:
-            await state.update_data(answers={})
+            await state.clear()
             return await self.wizard.retake()
 
         # BTN_BACK

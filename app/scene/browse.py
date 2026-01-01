@@ -15,6 +15,7 @@ from app.database.models import Action, CourseMaterial
 STEPS_CONFIG: Final[list[tuple[str, str]]] = [
     ("level_word", "اختر المستوى:"),
     ("term_word", "اختر الترم:"),
+    ("type", "اختر النوع:"),
     ("course", "اختر المقرر:"),
     ("title", "اختر المادة:"),
 ]

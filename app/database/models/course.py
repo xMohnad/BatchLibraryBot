@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import re
+from enum import Enum
 
 from aiogram.types import Message
 from beanie import Document
 from pydantic.fields import Field
 
 from app.utils import NUMBER, course_similarity, get_level, get_term
+
+
+class CourseType(str, Enum):
+    PRACTICAL = "عملي"
+    THEORETICAL = "نظري"
 
 
 class CourseMaterial(Document):
@@ -34,6 +40,14 @@ class CourseMaterial(Document):
             f"{self.course} | {self.title}\n\n"
             f"#مستوى_{self.level_word} "
             f"#ترم_{self.term_word}"
+        )
+
+    @property
+    def type(self) -> CourseType:
+        return (
+            CourseType.PRACTICAL
+            if CourseType.PRACTICAL.value in self.course
+            else CourseType.THEORETICAL
         )
 
     @property

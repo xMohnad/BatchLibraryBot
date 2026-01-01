@@ -7,7 +7,7 @@ from aiogram.types import Message
 from beanie import Document
 from pydantic.fields import Field
 
-from app.utils import NUMBER, course_similarity, get_level, get_term
+from app.utils import NUMBER, course_similarity, extract_kind, get_level, get_term
 
 
 class CourseType(str, Enum):
@@ -68,6 +68,8 @@ class CourseMaterial(Document):
         """Parse course information from a message caption."""
         course = await course_similarity(match.group("course"))
         title = match.group("title")
+
+        kwargs.update(extract_kind(match.string))
         kwargs.setdefault("course_id", message.message_id)
         kwargs.setdefault("message_id", message.message_id)
         kwargs.setdefault("from_chat_id", message.chat.id)

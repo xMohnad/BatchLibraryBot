@@ -21,9 +21,10 @@ class IdFilter(Filter):
 
 
 CAPTION_PATTERN = re.compile(r"(?P<course>.+\(.+\))\s*\|\s*(?P<title>.+)")
-
+KIND_PATTERN = re.compile(r"#(مستوى|ترم)_(\w+)")
 
 SUPPORTED_MEDIA = {"video", "document", "audio"}
+
 WORDS = {
     "أول": 1,
     "ثاني": 2,
@@ -31,6 +32,12 @@ WORDS = {
     "رابع": 4,
 }
 NUMBER = {v: k for k, v in WORDS.items()}
+
+KIND_MAP = {
+    "مستوى": "level",
+    "ترم": "term",
+}
+
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("pymongo").setLevel(logging.WARNING)
@@ -100,3 +107,24 @@ async def course_similarity(course: str):
 
     existing = [doc.course for doc in await CourseMaterial.find_all().to_list()]
     return resolve_course_similarity(course, existing)
+
+
+def extract_kind(text: str) -> dict[str, int]:
+    """
+    Extract level and/or term numbers from hashtags.
+
+    Args:
+        text: Input text that may contain hashtags.
+
+    Returns:
+        A dictionary with optional keys:
+            - "level": int
+            - "term": int
+
+        Returns an empty dict if no valid hashtags are found.
+    """
+    return {
+        KIND_MAP[kind]: WORDS[word]
+        for kind, word in KIND_PATTERN.findall(text)
+        if word in WORDS
+    }

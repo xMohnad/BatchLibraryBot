@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Iterable
 
 from aiogram import Bot, F
 from aiogram.fsm.context import FSMContext
@@ -21,74 +22,78 @@ from app.database.models import Action, File
 
 
 class Img2PdfScene(Scene, state="img2pdf"):
-    tmp = Path(tempfile.gettempdir())
+    """Scene for converting images to PDF."""
+
+    TMP = Path(tempfile.gettempdir())
+    """Temporary directory."""
+
+    PDF_KEYBOARD: InlineKeyboardMarkup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 حذف الكل",
+                    callback_data=Action.clear,
+                ),
+                InlineKeyboardButton(
+                    text="📄 تحويل إلى PDF",
+                    callback_data=Action.convert,
+                ),
+            ]
+        ]
+    )
+    """Inline keyboard for image-to-PDF actions."""
+
+    EDIT_KEYBOARD: InlineKeyboardMarkup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ تغيير اسم الملف",
+                    callback_data=Action.filename,
+                ),
+                InlineKeyboardButton(
+                    text="📝 تغيير الوصف",
+                    callback_data=Action.caption,
+                ),
+            ]
+        ]
+    )
+    """Inline keyboard for editing generated PDF."""
 
     async def send_pdf_result(self, message: Message, state: FSMContext, file: File):
         """Send the generated PDF to the user."""
         answer = await message.answer_document(
             BufferedInputFile.from_file(file.filepath, file.filename),
             caption=file.caption,
-            reply_markup=self.edit_keyboard(),
+            reply_markup=self.EDIT_KEYBOARD,
         )
 
-        await self.delete_prev(state)
+        await self._delete_previous_answer(state)
         await state.update_data(answer=answer, file=file)
 
-    async def process_images(
-        self, message: Message, state: FSMContext, new_file_ids: list[str]
-    ):
-        """Add new image file_ids to state while preserving order."""
+    async def _store_images(
+        self, state: FSMContext, new_ids: Iterable[str]
+    ) -> list[str]:
+        """Store image file_ids in state while preserving order."""
         images: list[str] = await state.get_value("images", [])
 
-        for f_id in new_file_ids:
-            if f_id not in images:
-                images.append(f_id)
+        for file_id in new_ids:
+            if file_id not in images:
+                images.append(file_id)
 
         await state.update_data(images=images)
+        return images
 
+    async def _send_status(self, message: Message, state: FSMContext, count: int):
+        """Send a status message showing current image count."""
+        await self._delete_previous_answer(state)
         answer = await message.answer(
-            f"🖼 عدد الصور الحالي: {len(images)}\n\n"
+            f"🖼 عدد الصور الحالي: {count}\n\n"
             "💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
-            reply_markup=self.pdf_keyboard(),
+            reply_markup=self.PDF_KEYBOARD,
         )
-        await self.delete_prev(state)
         await state.update_data(answer=answer)
 
-    # --- Keyboards ---
-
-    def pdf_keyboard(self) -> InlineKeyboardMarkup:
-        """Create inline keyboard for image to PDF actions."""
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🗑 حذف الكل",
-                        callback_data=Action.clear,
-                    ),
-                    InlineKeyboardButton(
-                        text="📄 تحويل إلى PDF",
-                        callback_data=Action.convert,
-                    ),
-                ]
-            ]
-        )
-
-    def edit_keyboard(self) -> InlineKeyboardMarkup:
-        """Build the edit keyboard for the generated PDF."""
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✏️ تغيير اسم الملف", callback_data=Action.filename
-                    ),
-                    InlineKeyboardButton(
-                        text="📝 تغيير الوصف", callback_data=Action.caption
-                    ),
-                ]
-            ]
-        )
-
-    async def delete_prev(self, state: FSMContext):
+    async def _delete_previous_answer(self, state: FSMContext):
         """Delete the previously sent bot message if it exists."""
         if pre_answer := await state.get_value("answer"):
             await pre_answer.delete()
@@ -99,7 +104,7 @@ class Img2PdfScene(Scene, state="img2pdf"):
     async def on_enter_any(self, event: Message | CallbackQuery, state: FSMContext):
         """Initialize the scene."""
         if message := event.message if isinstance(event, CallbackQuery) else event:
-            await state.update_data(images=[])
+            await state.set_data({})
             answer = await message.answer(
                 "قم بإرسال الصور المراد تحويلها إلى PDF.\n\n"
                 "💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
@@ -108,19 +113,24 @@ class Img2PdfScene(Scene, state="img2pdf"):
             await state.update_data(answer=answer)
 
     @on.message(F.photo, F.media_group_id)
-    async def on_send_group(
+    async def on_album(
         self, message: Message, media_events: list[Message], state: FSMContext
-    ):
-        """Handle grouped photo messages (albums)."""
+    ) -> None:
+        """Handle photo albums."""
         new_ids = [event.photo[-1].file_id for event in media_events if event.photo]
-        await self.process_images(message, state, new_ids)
+        images = await self._store_images(state, new_ids)
+        await self._send_status(message, state, len(images))
 
     @on.message(F.photo.as_("photo"))
-    async def on_send(
-        self, message: Message, state: FSMContext, photo: list[PhotoSize]
-    ):
-        """Handle a single photo message."""
-        await self.process_images(message, state, [photo[-1].file_id])
+    async def on_single_photo(
+        self,
+        message: Message,
+        state: FSMContext,
+        photo: list[PhotoSize],
+    ) -> None:
+        """Handle a single photo."""
+        images = await self._store_images(state, [photo[-1].file_id])
+        await self._send_status(message, state, len(images))
 
     @on.callback_query(F.data == Action.clear, F.message.as_("message"))
     async def on_clear(self, callback: CallbackQuery, message: Message):
@@ -142,12 +152,12 @@ class Img2PdfScene(Scene, state="img2pdf"):
 
         imgs: list[Path] = []
         for id in stored_images:
-            img: Path = self.tmp / id
+            img: Path = self.TMP / id
             if not img.is_file():
                 await bot.download(id, img)
             imgs.append(img)
 
-        pdf_path = self.tmp / f"{callback.from_user.id}.pdf"
+        pdf_path = self.TMP / f"{callback.from_user.id}.pdf"
         pil_images = [Image.open(img).convert("RGB") for img in imgs]
         pil_images[0].save(
             pdf_path,

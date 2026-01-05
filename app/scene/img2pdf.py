@@ -144,27 +144,34 @@ class Img2PdfScene(Scene, state="img2pdf"):
         self, callback: CallbackQuery, message: Message, state: FSMContext, bot: Bot
     ):
         """Convert stored images into a single PDF."""
-        stored_images = await state.get_value("images", [])
+        stored_images: list[str] = await state.get_value("images", [])
         if not stored_images:
             return await callback.answer("لا توجد صور للتحويل")
 
         await callback.answer("يتم التحويل...")
 
-        imgs: list[Path] = []
-        for id in stored_images:
-            img: Path = self.TMP / id
-            if not img.is_file():
-                await bot.download(id, img)
-            imgs.append(img)
+        image_paths: list[Path] = []
+        for file_id in stored_images:
+            path = self.TMP / file_id
+            if not path.exists():
+                await bot.download(file_id, path)
+            image_paths.append(path)
 
         pdf_path = self.TMP / f"{callback.from_user.id}.pdf"
-        pil_images = [Image.open(img).convert("RGB") for img in imgs]
-        pil_images[0].save(
-            pdf_path,
-            format="PDF",
-            save_all=True,
-            append_images=pil_images[1:],
-        )
+        images: list[Image.Image] = []
+        try:
+            for path in image_paths:
+                images.append(Image.open(path).convert("RGB"))
+
+            images[0].save(
+                pdf_path,
+                format="PDF",
+                save_all=True,
+                append_images=images[1:],
+            )
+        finally:
+            for img in images:
+                img.close()
 
         await self.send_pdf_result(message, state, File(filepath=pdf_path))
 

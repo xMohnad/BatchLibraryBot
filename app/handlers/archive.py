@@ -4,6 +4,7 @@ import re
 
 from aiogram import Bot, F, Router
 from aiogram.types import Message, MessageOriginChannel
+from beanie.odm.operators.update.general import Set
 
 from app.data.config import ARCHIVE_CHANNEL
 from app.database.models import CourseMaterial
@@ -72,16 +73,16 @@ async def on_del_archive(message: Message, replied: Message) -> None:
     await message.delete()
 
 
-async def upsert_course_material(source: Message, match: re.Match[str]) -> None:
+async def upsert_course_material(
+    source: Message, match: re.Match[str]
+) -> CourseMaterial:
     """Create or update CourseMaterial based on message content."""
     course = await CourseMaterial.parse_course(source, match)
 
-    original = await CourseMaterial.find_one(
+    await CourseMaterial.find_one(  # pyright: ignore[reportGeneralTypeIssues]
         CourseMaterial.message_id == source.message_id
-    )
-
-    if original:
-        await original.set(
+    ).upsert(
+        Set(
             course.model_dump(
                 exclude={
                     "id",
@@ -90,9 +91,10 @@ async def upsert_course_material(source: Message, match: re.Match[str]) -> None:
                     "from_chat_id",
                 }
             )
-        )
-    else:
-        await course.insert()
+        ),
+        on_insert=course,
+    )
+    return course
 
 
 @router.channel_post(

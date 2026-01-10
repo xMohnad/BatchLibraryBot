@@ -101,15 +101,26 @@ def resolve_course_similarity(course: str, existing: list[str], threshold=90) ->
     return course
 
 
-@alru_cache(maxsize=128)
-async def course_similarity(course: str, level: int) -> str:
+@alru_cache(ttl=60 * 60 * 2)
+async def get_courses_by_level(level: int) -> list[str]:
+    """
+    Retrieve course names for a given academic level.
+
+    Results are cached to reduce repeated database queries
+    for the same level.
+
+    Args:
+        level (int): Academic level identifier.
+
+    Returns:
+        list[str]: A list of course names associated with the given level.
+    """
     from app.database.models.course import CourseMaterial
 
-    existing = [
+    return [
         doc.course
         for doc in await CourseMaterial.find(CourseMaterial.level == level).to_list()
     ]
-    return resolve_course_similarity(course, existing)
 
 
 def extract_kind(text: str) -> dict[str, int]:

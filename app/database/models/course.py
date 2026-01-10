@@ -66,12 +66,13 @@ class CourseMaterial(Document):
         **kwargs,
     ) -> CourseMaterial:
         """Parse course information from a message caption."""
-        course = await course_similarity(match.group("course"))
-        title = match.group("title")
-
         kwargs.update(extract_kind(match.string))
         kwargs.setdefault("course_id", message.message_id)
         kwargs.setdefault("message_id", message.message_id)
         kwargs.setdefault("from_chat_id", message.chat.id)
 
+        course = await course_similarity(
+            match.group("course"), kwargs.get("level") or get_level()
+        )
+        title = match.group("title")
         return cls(course=course.strip(), title=title.strip(), **kwargs)

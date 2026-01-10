@@ -102,10 +102,13 @@ def resolve_course_similarity(course: str, existing: list[str], threshold=90) ->
 
 
 @alru_cache(maxsize=128)
-async def course_similarity(course: str):
+async def course_similarity(course: str, level: int) -> str:
     from app.database.models.course import CourseMaterial
 
-    existing = [doc.course for doc in await CourseMaterial.find_all().to_list()]
+    existing = [
+        doc.course
+        for doc in await CourseMaterial.find(CourseMaterial.level == level).to_list()
+    ]
     return resolve_course_similarity(course, existing)
 
 

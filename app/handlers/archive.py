@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 
-from aiogram import Bot, F, Router
-from aiogram.types import Message, MessageOriginChannel
+from aiogram import F, Router
+from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL
 from app.database.models import CourseMaterial
@@ -14,32 +14,6 @@ router = Router(name=__name__)
 
 router.channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
-
-
-@router.channel_post(
-    F.content_type.in_(SUPPORTED_MEDIA), F.forward_origin.as_("origin")
-)
-async def handle_forward_media(
-    message: Message, origin: MessageOriginChannel, bot: Bot
-) -> None:
-    """Handle new forward media post."""
-    id = await bot.copy_message(
-        ARCHIVE_CHANNEL,
-        message.chat.id,
-        message.message_id,
-    )
-
-    if match := CAPTION_PATTERN.search(message.caption or ""):
-        course = await CourseMaterial.parse_course(
-            message,
-            match,
-            course_id=origin.message_id,
-            message_id=id.message_id,
-            from_chat_id=origin.chat.id,
-        )
-        await course.insert()
-
-    await message.delete()
 
 
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 
 from aiogram import F, Router
@@ -11,6 +12,7 @@ from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA, IdFilter
 
 router = Router(name=__name__)
 
+logger = logging.getLogger(__name__)
 
 router.channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
@@ -19,6 +21,7 @@ router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
 async def handle_archive_media(message: Message, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
+    logger.info("Handling new media post")
 
     caption = media_events[-1].caption or ""
     if match := CAPTION_PATTERN.search(caption):
@@ -36,12 +39,14 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
 )
 async def on_del_archive(message: Message, replied: Message) -> None:
     """Handle edited media post."""
+    logger.info("Delete command (%s) received", message.text)
 
     if original := await CourseMaterial.find_one(
         CourseMaterial.message_id == replied.message_id
     ):
         await original.delete()
         await replied.delete()
+        logger.info("Deleted course with message_id %d", replied.message_id)
 
     await message.delete()
 
@@ -58,10 +63,13 @@ async def on_edit_archive_reply(
     replied: Message,
 ) -> None:
     """Handle edit command sent as a reply."""
+    logger.info("Edit command (%s) received", message.text)
+
     use_similarity = "-f" not in (message.text or "")
     course = await CourseMaterial.parse_course(replied, match, use_similarity)
     await course.upsert_course(CourseMaterial.message_id == course.message_id)
     await message.delete()
+    logger.info("Updated course with message_id %d (reply edit)", course.message_id)
 
 
 @router.edited_channel_post(
@@ -70,5 +78,8 @@ async def on_edit_archive_reply(
 )
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
     """Handle direct media edit in channel."""
+    logger.info("Direct edit received")
+
     course = await CourseMaterial.parse_course(message, match)
     await course.upsert_course(CourseMaterial.message_id == course.message_id)
+    logger.info("Updated course with message_id %d (direct edit)", course.message_id)

@@ -51,13 +51,11 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
         CourseMaterial.course_id == message.message_id
     ):
         if original != course:
-            updated = await original.set(
-                course.model_dump(exclude={"id", "message_id"})
-            )
+            await original.set(course.model_dump(exclude={"id", "message_id"}))
             await bot.edit_message_caption(
                 chat_id=ARCHIVE_CHANNEL,
-                message_id=updated.message_id,
-                caption=updated.formatted_info,
+                message_id=course.message_id,
+                caption=course.formatted_info,
             )
     else:
         await copy_and_update(course, bot)

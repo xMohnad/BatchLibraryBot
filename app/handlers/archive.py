@@ -4,7 +4,6 @@ import re
 
 from aiogram import Bot, F, Router
 from aiogram.types import Message, MessageOriginChannel
-from beanie.odm.operators.update.general import Set
 
 from app.data.config import ARCHIVE_CHANNEL
 from app.database.models import CourseMaterial
@@ -73,30 +72,6 @@ async def on_del_archive(message: Message, replied: Message) -> None:
     await message.delete()
 
 
-async def upsert_course_material(
-    source: Message, match: re.Match[str]
-) -> CourseMaterial:
-    """Create or update CourseMaterial based on message content."""
-    course = await CourseMaterial.parse_course(source, match)
-
-    await CourseMaterial.find_one(  # pyright: ignore[reportGeneralTypeIssues]
-        CourseMaterial.message_id == source.message_id
-    ).upsert(
-        Set(
-            course.model_dump(
-                exclude={
-                    "id",
-                    "message_id",
-                    "course_id",
-                    "from_chat_id",
-                }
-            )
-        ),
-        on_insert=course,
-    )
-    return course
-
-
 @router.channel_post(
     F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
     F.reply_to_message.caption.regexp(CAPTION_PATTERN).as_("match"),
@@ -109,7 +84,9 @@ async def on_edit_archive_reply(
     replied: Message,
 ) -> None:
     """Handle edit command sent as a reply."""
-    await upsert_course_material(replied, match)
+    use_similarity = "-f" not in (message.text or "")
+    course = await CourseMaterial.parse_course(replied, match, use_similarity)
+    await course.upsert_course(CourseMaterial.message_id == course.message_id)
     await message.delete()
 
 
@@ -119,4 +96,5 @@ async def on_edit_archive_reply(
 )
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
     """Handle direct media edit in channel."""
-    await upsert_course_material(message, match)
+    course = await CourseMaterial.parse_course(message, match)
+    await course.upsert_course(CourseMaterial.message_id == course.message_id)

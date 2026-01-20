@@ -102,15 +102,16 @@ def resolve_course_similarity(course: str, existing: list[str], threshold=90) ->
 
 
 @alru_cache(ttl=60 * 60 * 2)
-async def get_courses_by_level(level: int) -> list[str]:
+async def get_courses_by_(level: int, term: int) -> list[str]:
     """
-    Retrieve course names for a given academic level.
+    Retrieve course names for a given academic level and term.
 
     Results are cached to reduce repeated database queries
-    for the same level.
+    for the same level and term.
 
     Args:
         level (int): Academic level identifier.
+        term (int): Academic term identifier.
 
     Returns:
         list[str]: A list of course names associated with the given level.
@@ -119,7 +120,9 @@ async def get_courses_by_level(level: int) -> list[str]:
 
     return [
         doc.course
-        for doc in await CourseMaterial.find(CourseMaterial.level == level).to_list()
+        for doc in await CourseMaterial.find(
+            CourseMaterial.level == level, CourseMaterial.term == term
+        ).to_list()
     ]
 
 

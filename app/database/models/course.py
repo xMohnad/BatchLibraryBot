@@ -12,7 +12,7 @@ from pydantic.fields import Field
 from app.utils import (
     NUMBER,
     extract_kind,
-    get_courses_by_level,
+    get_courses_by_,
     get_level,
     get_term,
     resolve_course_similarity,
@@ -111,7 +111,9 @@ class CourseMaterial(Document):
         course = match.group("course")
 
         if similarity:
-            courses = await get_courses_by_level(kwargs.get("level") or get_level())
+            courses = await get_courses_by_(
+                kwargs.get("level") or get_level(), kwargs.get("term") or get_term()
+            )
             course = resolve_course_similarity(course, courses)
 
         return cls(course=course.strip(), title=title.strip(), **kwargs)

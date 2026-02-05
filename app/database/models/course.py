@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Mapping
+from pathlib import Path
+from typing import Annotated
 
 from aiogram.types import Message
-from beanie import Document
-from beanie.odm.operators.update.general import Set
+from async_lru import alru_cache
+from beanie import Document, Indexed, Replace, Save, before_event
+from pydantic import Field
 from pydantic.fields import Field
 
 from app.utils import (
     NUMBER,
-    extract_kind,
-    get_courses_by_,
     get_level,
+    get_semester,
     get_term,
     resolve_course_similarity,
 )
@@ -24,96 +26,197 @@ class CourseType(str, Enum):
     THEORETICAL = "نظري"
 
 
-class CourseMaterial(Document):
-    """Represents a course material with metadata"""
+class Gender(str, Enum):
+    """Enumeration of possible user genders."""
 
-    level: int = Field(default_factory=get_level)
-    term: int = Field(default_factory=get_term)
-    course: str
+    male = "male"
+    """Male gender."""
+
+    female = "female"
+    """Female gender."""
+
+    unknown = "unknown"
+    """Undefined or not specified gender."""
+
+
+class BaseDocument(Document):
+    """Base document containing common timestamp fields."""
+
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    """Date and time when the document was created (UTC)."""
+
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    """Date and time when the document was last updated (UTC)."""
+
+    @before_event(Save, Replace)
+    def update_timestamp(self):
+        """Automatically updates the 'updatedAt' field before saving or replacing the document."""
+        self.updatedAt = datetime.now(timezone.utc)
+
+
+class Users(BaseDocument):
+    """Represents a system user."""
+
+    telegramId: Annotated[int, Indexed(unique=True)]
+    """Unique Telegram user identifier."""
+
+    fullName: str
+    """Full name of the user as provided by Telegram."""
+
+    gender: Gender = Gender.unknown
+    """User gender (male, female, or unknown)."""
+
+    isAdmin: bool = False
+    """Indicates whether the user has administrator privileges."""
+
+
+class CourseFile(BaseDocument):
+    """Represents a file associated with a course."""
+
     title: str
-    course_id: int
-    message_id: int
-    from_chat_id: int
+    """Human-readable title of the file."""
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, CourseMaterial):
-            return NotImplemented
+    archiveTelegramMessageId: int
 
-        include = {"level", "term", "course", "title"}
-        return self.model_dump(include=include) == other.model_dump(include=include)
+    """Telegram message ID where the file is stored in the archive channel."""
+
+    chatId: int
+    """Chat ID of the archive channel."""
+
+    originalTelegramMessageId: int
+    """Original Telegram message ID from the source chat."""
+
+    fromChatId: int
+    """Source chat ID where the file was originally sent."""
+
+    fileId: str
+
+    """Unique Telegram file identifier."""
+
+    originalName: str
+    """Original filename as uploaded by the user."""
+
+    mimeType: str | None
+    """MIME type of the file (e.g., application/pdf, image/png)."""
+
+    extension: str
+    """File extension without dot (e.g., pdf, png, mp4)."""
+
+    sizeBytes: int
+    """File size in bytes."""
+
+    @classmethod
+    async def parse_file(
+        cls, message: Message, match: re.Match[str], **kwargs
+    ) -> CourseFile:
+        """Parse course file information from a Telegram message."""
+        kwargs.setdefault("originalTelegramMessageId", message.message_id)
+        kwargs.setdefault("archiveTelegramMessageId", message.message_id)
+        kwargs.setdefault("fromChatId", message.chat.id)
+        kwargs.setdefault("chatId", message.chat.id)
+        kwargs.setdefault("title", match.group("title"))
+
+        file = message.document or message.video or message.audio
+        if not file:
+            raise ValueError(
+                "Message does not contain a supported file (document, video, or audio)."
+            )
+
+        if not (file_name := file.file_name) or not (file_size := file.file_size):
+            raise ValueError("Invalid file metadata received from Telegram.")
+
+        extension = Path(file_name).suffix.lstrip(".")
+        return cls(
+            fileId=file.file_id,
+            originalName=file_name,
+            mimeType=file.mime_type,
+            sizeBytes=file_size,
+            extension=extension,
+            **kwargs,
+        )
+
+
+class Course(BaseDocument):
+    """Represents a course linked to a subject and its files."""
+
+    courseName: Annotated[str, Indexed()]
+    """Name of the course or subject."""
+
+    tutorName: str
+    """Name of the tutor or instructor."""
+
+    semester: int = Field(..., ge=1, le=8)
+    """Academic semester number (e.g., 1, 2, 3, ..., 8)."""
+
+    isPractical: bool
+    """Indicates whether the subject is practical (True) or theoretical (False)."""
+
+    files: list[CourseFile] = Field(default_factory=list)
+    """List of files associated with this course."""
+
+    class Settings:
+        indexes = [
+            "files.originalTelegramMessageId",
+            "files.archiveTelegramMessageId",
+            "files.fileId",
+        ]
 
     @property
-    def formatted_info(self) -> str:
+    def level(self) -> str:
+        return NUMBER[get_level(self.semester)]
+
+    @property
+    def term(self) -> str:
+        return NUMBER[get_term(self.semester)]
+
+    def formatted_info(self, title: str) -> str:
         """Get formatted course information"""
         return (
-            f"{self.course} | {self.title}\n\n"
-            f"#مستوى_{self.level_word} "
-            f"#ترم_{self.term_word}"
-        )
-
-    @property
-    def type(self) -> CourseType:
-        return (
-            CourseType.PRACTICAL
-            if CourseType.PRACTICAL.value in self.course
-            else CourseType.THEORETICAL
-        )
-
-    @property
-    def level_word(self) -> str:
-        return NUMBER[self.level]
-
-    @property
-    def term_word(self) -> str:
-        return NUMBER[self.term]
-
-    @property
-    def update_fields(self) -> dict[Any, Any]:
-        """Return fields used to update an existing CourseMaterial document."""
-        return {
-            CourseMaterial.level: self.level,
-            CourseMaterial.term: self.term,
-            CourseMaterial.course: self.course,
-            CourseMaterial.title: self.title,
-        }
-
-    async def upsert_course(
-        self,
-        *args: Mapping[Any, Any] | bool,
-        include: Mapping[str, Any] | None = None,
-    ) -> None:
-        """Insert or update CourseMaterial."""
-
-        update_doc = self.update_fields
-        if include:
-            update_doc |= include
-
-        await CourseMaterial.find_one(*args).upsert(  # pyright: ignore[reportGeneralTypeIssues]
-            Set(update_doc),
-            on_insert=self,
+            f"{self.courseName} ({self.tutorName}) | {title}\n\n"
+            f"#المستوى_{self.level} #الفصل_{self.term}"
         )
 
     @classmethod
-    async def parse_course(
-        cls,
-        message: Message,
-        match: re.Match[str],
-        similarity: bool = True,
-        **kwargs,
-    ) -> CourseMaterial:
-        """Parse course information from a message caption."""
-        kwargs.update(extract_kind(match.string))
-        kwargs.setdefault("course_id", message.message_id)
-        kwargs.setdefault("message_id", message.message_id)
-        kwargs.setdefault("from_chat_id", message.chat.id)
+    @alru_cache(ttl=60 * 60 * 2)
+    async def get_courses_name(cls, semester: int = get_semester()) -> list[str]:
+        """
+        Retrieve course names for a given academic
 
-        title = match.group("title")
-        course = match.group("course")
+        Results are cached to reduce repeated database queries
+        for the same semester.
 
-        if similarity:
-            courses = await get_courses_by_(
-                kwargs.get("level") or get_level(), kwargs.get("term") or get_term()
-            )
-            course = resolve_course_similarity(course, courses)
+        Returns:
+            list[str]: A list of course names associated with the given semester.
+        """
+        return await cls.distinct(Course.courseName, {"semester": semester})
 
-        return cls(course=course.strip(), title=title.strip(), **kwargs)
+    @classmethod
+    @alru_cache(ttl=60 * 60 * 2)
+    async def get_course(
+        cls, courseName: str, semester: int = get_semester()
+    ) -> Course | None:
+        courses = await cls.get_courses_name(semester)
+        course = resolve_course_similarity(courseName, courses)
+        return await cls.find_one(cls.courseName == course, cls.semester == semester)
+
+    async def upsert_files(self, files: list[CourseFile]) -> bool:
+        """Update file title if fileId exists, otherwise add new file."""
+
+        files_by_id = {f.fileId: f for f in self.files}
+        updated = False
+
+        for new_file in files:
+            if new_file.fileId in files_by_id:
+                existing_file = files_by_id[new_file.fileId]
+                if existing_file.title != new_file.title:
+                    existing_file.title = new_file.title
+
+            else:
+                # Add new file
+                self.files.append(new_file)
+                updated = True
+
+        if updated:
+            await self.save()
+
+        return updated

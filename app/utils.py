@@ -34,7 +34,6 @@ WORDS = {
 NUMBER = {v: k for k, v in WORDS.items()}
 
 
-
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("pymongo").setLevel(logging.WARNING)
 
@@ -106,7 +105,11 @@ def get_available_terms() -> list[str]:
 def resolve_course_similarity(course: str, existing: list[str], threshold=90) -> str:
     logger.info(f"Checking similarity for: '{course}'")
 
-    match = process.extractOne(course, existing, scorer=fuzz.WRatio)
+    if course in existing:
+        logger.info(f"Exact match found in database for: '{course}'")
+        return course
+
+    match = process.extractOne(course, existing, scorer=fuzz.token_sort_ratio)
 
     logger.info(f"Best match: {match}")
 

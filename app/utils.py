@@ -19,8 +19,9 @@ class IdFilter(Filter):
         return message.chat.id == self.id
 
 
-CAPTION_PATTERN = re.compile(r"(?P<course>.+\(.+\))\s*\|\s*(?P<title>.+)")
-KIND_PATTERN = re.compile(r"#(مستوى|ترم)_(\w+)")
+CAPTION_PATTERN = re.compile(
+    r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)"
+)
 
 SUPPORTED_MEDIA = {"video", "document", "audio"}
 

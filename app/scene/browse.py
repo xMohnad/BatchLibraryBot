@@ -95,7 +95,7 @@ class BrowseScene(Scene, state="browse"):
         if not courses:
             return "لم يتم إضافة مواد لهذا الاختيار بعد.", []
 
-        options = [f"{course.courseName}" for course in courses]
+        options = [f"{course.courseName}" for course in courses if course.files]
         return "اختر المقرر:", options
 
     async def _prompt_files_selection(self, answers: dict) -> tuple[str, list[str]]:
@@ -107,8 +107,8 @@ class BrowseScene(Scene, state="browse"):
         if not courses or not courses[0].files:
             return "لا توجد ملفات للمقرر المحدد.", []
 
-        options = [file.title for file in courses[0].files]
-        return "اختر المادة:", options
+        options = {file.title for file in courses[0].files}
+        return "اختر المادة:", list(options)
 
     async def _handle_file_download(
         self, message: Message, bot: Bot, state: FSMContext, answers: dict
@@ -129,7 +129,6 @@ class BrowseScene(Scene, state="browse"):
             for file in courses[0].files:
                 if file.title == selected_title:
                     file_ids.append(file.archiveTelegramMessageId)
-                    break
 
             if not file_ids:
                 await message.answer("الملف غير موجود.")

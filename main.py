@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from app import setup_middlewares, setup_routes
 from app.data.config import TELEGRAM_BOT_TOKEN, WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
 from app.database.base import database
-from app.database.models import CourseMaterial
+from app.database.models import Course
 from app.utils import logger
 
 bot = Bot(
@@ -29,13 +29,14 @@ bot = Bot(
 dp = Dispatcher()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_beanie(database=database, document_models=[CourseMaterial])
+async def init_bot() -> None:
+    # Init database
+    await init_beanie(database=database, document_models=[Course])
+
+    # Load middlewares and routes
     await setup_middlewares(dp)
     await setup_routes(dp)
 
-    await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
     await bot.set_my_commands(
         [
             BotCommand(command="/start", description="Start chatting"),
@@ -45,6 +46,11 @@ async def lifespan(app: FastAPI):
         scope=BotCommandScopeAllPrivateChats(),
     )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_bot()
+    await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
     logger.info("Webhook set and bot ready")
 
     yield

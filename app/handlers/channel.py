@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
+from collections import defaultdict
 
 from aiogram import Bot, F, Router
 from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
-from app.database.models import CourseMaterial
+from app.database.models.course import Course, CourseFile
 from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA, IdFilter
 
 router = Router(name=__name__)
@@ -19,32 +19,37 @@ router.channel_post.filter(IdFilter(CHANNEL_ID))
 router.edited_channel_post.filter(IdFilter(CHANNEL_ID))
 
 
-async def copy_and_update(course: CourseMaterial, bot: Bot) -> CourseMaterial:
-    """Copy message to archive and insert course."""
-    logger.info("Copying course to archive. Original message_id: %d", course.message_id)
-    copied = await bot.copy_message(
-        ARCHIVE_CHANNEL,
-        course.from_chat_id,
-        course.message_id,
-        caption=course.formatted_info,
-    )
-    course.message_id = copied.message_id
-    await course.insert()
-    logger.info("Course copied. New message_id: %d", course.message_id)
-    return course
-
-
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
 async def handle_media(message: Message, bot: Bot, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
-    caption = media_events[-1].caption or ""
-    if match := CAPTION_PATTERN.search(caption):
-        courses = [
-            await CourseMaterial.parse_course(msg, match) for msg in media_events
-        ]
-        logger.info("Parsed %d courses from media posts", len(courses))
-        await asyncio.gather(*(copy_and_update(c, bot) for c in courses))
+    default = media_events[-1].caption or ""
+    course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
+    for msg in media_events:
+        caption = msg.caption or default
+        if match := CAPTION_PATTERN.search(caption):
+            course_title: str = match.group("course")
+            course_file = await CourseFile.parse_file(msg, match)
+            course_files[course_title].append(course_file)
+
+    for name, files in course_files.items():
+        if course := await Course.get_course(name):
+            for file in files:
+                logger.info(
+                    "Copying course to archive. Original message_id: %d",
+                    file.originalTelegramMessageId,
+                )
+                copied = await bot.copy_message(
+                    ARCHIVE_CHANNEL,
+                    file.fromChatId,
+                    file.originalTelegramMessageId,
+                    caption=course.formatted_info(file.title),
+                )
+                file.archiveTelegramMessageId = copied.message_id
+
+                logger.info("Course copied. New message_id: %d", copied.message_id)
+            await course.upsert_files(files)
+            logger.info("Parsed %d courses from media posts", len(files))
 
 
 @router.edited_channel_post(
@@ -54,17 +59,50 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
 async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
     """Handle edited media posts."""
     logger.info("Editing media post")
-    course = await CourseMaterial.parse_course(message, match)
-    if original := await CourseMaterial.find_one(
-        CourseMaterial.course_id == message.message_id
-    ):
-        if original != course:
-            await original.set(course.model_dump(exclude={"id", "message_id"}))
+
+    course_name: str = match.group("course")
+    if course := await Course.get_course(course_name):
+        files_by_id = {f.originalTelegramMessageId: f for f in course.files}
+        if message.message_id in files_by_id:
+            file = files_by_id[message.message_id]
+            if file.title == match.group("title"):
+                logger.info("Title is identical. No changes needed. Skipping update.")
+                return
+
+            file.title = match.group("title")
+            logger.info(
+                "Updated course with message_id %d (channel edit)",
+                file.archiveTelegramMessageId,
+            )
             await bot.edit_message_caption(
                 chat_id=ARCHIVE_CHANNEL,
-                message_id=course.message_id,
-                caption=course.formatted_info,
+                message_id=file.archiveTelegramMessageId,
+                caption=course.formatted_info(file.title),
             )
-            logger.info("Updated archived course. message_id: %d", course.message_id)
+            logger.info(
+                "Updated archived course. message_id: %d",
+                file.originalTelegramMessageId,
+            )
+            await course.save()
+            logger.info("Course document saved with updated file title.")
+        else:
+            logger.info(
+                f"File NOT found in course (Message ID: {message.message_id}). Treating as new file addition..."
+            )
+            file = await CourseFile.parse_file(message, match)
+            logger.info(
+                "Copying course to archive. Original message_id: %d",
+                file.originalTelegramMessageId,
+            )
+            copied = await bot.copy_message(
+                ARCHIVE_CHANNEL,
+                file.fromChatId,
+                file.originalTelegramMessageId,
+                caption=course.formatted_info(file.title),
+            )
+            file.archiveTelegramMessageId = copied.message_id
+            course.files.append(file)
+            await course.save()
+            logger.info("Course copied. New message_id: %d", copied.message_id)
     else:
-        await copy_and_update(course, bot)
+        logger.warning(f"Course not found for name: {course_name}. Ignoring edit.")

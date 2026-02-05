@@ -7,7 +7,7 @@ from aiogram import F, Router
 from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL
-from app.database.models import CourseMaterial
+from app.database.models.course import Course, CourseFile
 from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA, IdFilter
 
 router = Router(name=__name__)
@@ -17,18 +17,26 @@ logger = logging.getLogger(__name__)
 router.channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 
+from collections import defaultdict
+
 
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
 async def handle_archive_media(message: Message, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
 
-    caption = media_events[-1].caption or ""
-    if match := CAPTION_PATTERN.search(caption):
-        courses = [
-            await CourseMaterial.parse_course(msg, match) for msg in media_events
-        ]
-        await CourseMaterial.insert_many(courses)
+    default = media_events[-1].caption or ""
+    course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
+    for msg in media_events:
+        caption = msg.caption or default
+        if match := CAPTION_PATTERN.search(caption):
+            course_title: str = match.group("course")
+            course_file = await CourseFile.parse_file(msg, match)
+            course_files[course_title].append(course_file)
+
+    for name, files in course_files.items():
+        if course := await Course.get_course(name):
+            await course.upsert_files(files)
 
 
 @router.channel_post(
@@ -41,12 +49,16 @@ async def on_del_archive(message: Message, replied: Message) -> None:
     """Handle edited media post."""
     logger.info("Delete command (%s) received", message.text)
 
-    if original := await CourseMaterial.find_one(
-        CourseMaterial.message_id == replied.message_id
+    if result := await Course.find_one(
+        Course.files.archiveTelegramMessageId == replied.message_id  # pyright: ignore[reportAttributeAccessIssue]
     ):
-        await original.delete()
         await replied.delete()
-        logger.info("Deleted course with message_id %d", replied.message_id)
+        await result.update(  # pyright: ignore[reportGeneralTypeIssues]
+            {"$pull": {"files": {"archiveTelegramMessageId": replied.message_id}}}
+        )
+        logger.info(
+            "Deleted specific file with message_id %d from course", replied.message_id
+        )
 
     await message.delete()
 
@@ -65,11 +77,16 @@ async def on_edit_archive_reply(
     """Handle edit command sent as a reply."""
     logger.info("Edit command (%s) received", message.text)
 
-    use_similarity = "-f" not in (message.text or "")
-    course = await CourseMaterial.parse_course(replied, match, use_similarity)
-    await course.upsert_course(CourseMaterial.message_id == course.message_id)
+    course_name: str = match.group("course")
+    if course := await Course.get_course(course_name):
+        file = await CourseFile.parse_file(replied, match)
+        await course.upsert_files([file])
+        logger.info(
+            "Updated course with message_id %d (reply edit)",
+            file.archiveTelegramMessageId,
+        )
+
     await message.delete()
-    logger.info("Updated course with message_id %d (reply edit)", course.message_id)
 
 
 @router.edited_channel_post(
@@ -80,6 +97,11 @@ async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None
     """Handle direct media edit in channel."""
     logger.info("Direct edit received")
 
-    course = await CourseMaterial.parse_course(message, match)
-    await course.upsert_course(CourseMaterial.message_id == course.message_id)
-    logger.info("Updated course with message_id %d (direct edit)", course.message_id)
+    course_name: str = match.group("course")
+    if course := await Course.get_course(course_name):
+        file = await CourseFile.parse_file(message, match)
+        await course.upsert_files([file])
+        logger.info(
+            "Updated course with message_id %d (direct edit)",
+            file.archiveTelegramMessageId,
+        )

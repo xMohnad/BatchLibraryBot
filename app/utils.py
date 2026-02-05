@@ -6,7 +6,6 @@ from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.filters import Filter
 from aiogram.types import Message
-from async_lru import alru_cache
 from rapidfuzz import fuzz, process
 
 from app.data.config import CHANNEL_ID
@@ -20,23 +19,20 @@ class IdFilter(Filter):
         return message.chat.id == self.id
 
 
-CAPTION_PATTERN = re.compile(r"(?P<course>.+\(.+\))\s*\|\s*(?P<title>.+)")
-KIND_PATTERN = re.compile(r"#(مستوى|ترم)_(\w+)")
+CAPTION_PATTERN = re.compile(
+    r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)"
+)
 
 SUPPORTED_MEDIA = {"video", "document", "audio"}
 
 WORDS = {
-    "أول": 1,
-    "ثاني": 2,
-    "ثالث": 3,
-    "رابع": 4,
+    "الأول": 1,
+    "الثاني": 2,
+    "الثالث": 3,
+    "الرابع": 4,
 }
 NUMBER = {v: k for k, v in WORDS.items()}
 
-KIND_MAP = {
-    "مستوى": "level",
-    "ترم": "term",
-}
 
 
 logging.basicConfig(level=logging.INFO)
@@ -83,7 +79,28 @@ def get_level(semester: int = get_semester()) -> int:
 
 
 def get_term(semester: int = get_semester()) -> int:
+    """
+    Returns current academic term (1 or 2).
+    """
     return 1 if semester % 2 == 1 else 2
+
+
+def get_available_levels() -> list[str]:
+    """
+    Returns available academic levels as Arabic words.
+    Example: ['الأول', 'الثاني']
+    """
+    current_level = get_level()
+    return [NUMBER[i] for i in range(1, current_level + 1)]
+
+
+def get_available_terms() -> list[str]:
+    """
+    Returns available academic terms as Arabic words.
+    Example: ['الأول'] or ['الأول', 'الثاني']
+    """
+    current_term = get_term()
+    return [NUMBER[i] for i in range(1, current_term + 1)]
 
 
 def resolve_course_similarity(course: str, existing: list[str], threshold=90) -> str:
@@ -101,47 +118,14 @@ def resolve_course_similarity(course: str, existing: list[str], threshold=90) ->
     return course
 
 
-@alru_cache(ttl=60 * 60 * 2)
-async def get_courses_by_(level: int, term: int) -> list[str]:
+def to_semester(level: int, term: int) -> int:
     """
-    Retrieve course names for a given academic level and term.
-
-    Results are cached to reduce repeated database queries
-    for the same level and term.
-
-    Args:
-        level (int): Academic level identifier.
-        term (int): Academic term identifier.
-
-    Returns:
-        list[str]: A list of course names associated with the given level.
+    Convert academic level and term into semester number.
     """
-    from app.database.models.course import CourseMaterial
+    if level < 1:
+        raise ValueError("Level must be >= 1")
 
-    return [
-        doc.course
-        for doc in await CourseMaterial.find(
-            CourseMaterial.level == level, CourseMaterial.term == term
-        ).to_list()
-    ]
+    if term not in (1, 2):
+        raise ValueError("Term must be 1 or 2")
 
-
-def extract_kind(text: str) -> dict[str, int]:
-    """
-    Extract level and/or term numbers from hashtags.
-
-    Args:
-        text: Input text that may contain hashtags.
-
-    Returns:
-        A dictionary with optional keys:
-            - "level": int
-            - "term": int
-
-        Returns an empty dict if no valid hashtags are found.
-    """
-    return {
-        KIND_MAP[kind]: WORDS[word]
-        for kind, word in KIND_PATTERN.findall(text)
-        if word in WORDS
-    }
+    return (level - 1) * 2 + term

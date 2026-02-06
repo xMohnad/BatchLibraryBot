@@ -4,12 +4,12 @@ import re
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 
 from aiogram.types import Message
 from async_lru import alru_cache
 from beanie import Document, Indexed, Replace, Save, before_event
-from pydantic import Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic.fields import Field
 
 from app.utils import (
@@ -70,7 +70,7 @@ class Users(BaseDocument):
     """Indicates whether the user has administrator privileges."""
 
 
-class CourseFile(BaseDocument):
+class CourseFile(BaseModel):
     """Represents a file associated with a course."""
 
     title: str
@@ -90,7 +90,6 @@ class CourseFile(BaseDocument):
     """Source chat ID where the file was originally sent."""
 
     fileId: str
-
     """Unique Telegram file identifier."""
 
     originalName: str
@@ -104,6 +103,18 @@ class CourseFile(BaseDocument):
 
     sizeBytes: int
     """File size in bytes."""
+
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    """Date and time when the document was created (UTC)."""
+
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    """Date and time when the document was last updated (UTC)."""
+
+    @model_validator(mode="after")
+    def update_timestamp(self) -> Self:
+        """Automatically updates the 'updatedAt' field after updates any field."""
+        self.updatedAt = datetime.now(timezone.utc)
+        return self
 
     @classmethod
     async def parse_file(

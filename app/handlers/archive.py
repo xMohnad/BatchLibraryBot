@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import defaultdict
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL
@@ -16,8 +18,6 @@ logger = logging.getLogger(__name__)
 
 router.channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
-
-from collections import defaultdict
 
 
 @router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
@@ -80,11 +80,26 @@ async def on_edit_archive_reply(
     course_name: str = match.group("course")
     if course := await Course.get_course(course_name):
         file = await CourseFile.parse_file(replied, match)
-        await course.upsert_files([file])
-        logger.info(
-            "Updated course with message_id %d (reply edit)",
-            file.archiveTelegramMessageId,
-        )
+        try:
+            await course.upsert_files([file])
+            await replied.edit_caption(caption=course.formatted_info(file.title))
+            logger.info(
+                "Updated course with message_id %d (reply edit)",
+                file.archiveTelegramMessageId,
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" in e.message.lower():
+                logger.warning(
+                    "Update skipped for Message ID %d: Content is identical.",
+                    file.archiveTelegramMessageId,
+                )
+            else:
+                logger.error(
+                    "Telegram API error while updating Message ID %d: %s",
+                    file.archiveTelegramMessageId,
+                    e,
+                    exc_info=True,
+                )
 
     await message.delete()
 

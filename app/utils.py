@@ -34,10 +34,7 @@ WORDS = {
 NUMBER = {v: k for k, v in WORDS.items()}
 
 
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("pymongo").setLevel(logging.WARNING)
-
-logger = logging.getLogger("Batch7LibraryBot")
+logger = logging.getLogger(__name__)
 
 
 async def is_admin(bot: Bot, user_id: int) -> bool:

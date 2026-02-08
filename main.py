@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
@@ -16,7 +17,9 @@ from app import setup_middlewares, setup_routes
 from app.data.config import TELEGRAM_BOT_TOKEN, WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
 from app.database.base import database
 from app.database.models import Course
-from app.utils import logger
+from app.logger import setup_logging
+
+logger = logging.getLogger(__name__)
 
 bot = Bot(
     TELEGRAM_BOT_TOKEN,
@@ -30,6 +33,8 @@ dp = Dispatcher()
 
 
 async def init_bot() -> None:
+    setup_logging(bot)
+
     # Init database
     await init_beanie(database=database, document_models=[Course])
 

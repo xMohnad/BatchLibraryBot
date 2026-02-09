@@ -85,7 +85,9 @@ async def search_course_files(query: InlineQuery):
 
         results.append(
             InlineQueryResultCachedDocument(
-                id=hashlib.md5(f"{file_id}".encode()).hexdigest(),
+                id=hashlib.md5(
+                    f"{file_id}:{item.get('courseName')}:{title}".encode()
+                ).hexdigest(),
                 title=f"{item.get('courseName')} {title}",
                 document_file_id=file_id,
                 description=f"{item.get('tutorName')} - الفصل {item.get('semester')}",

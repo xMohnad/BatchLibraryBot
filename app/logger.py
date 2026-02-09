@@ -58,4 +58,6 @@ def setup_logging(bot: Bot) -> None:
         format="%(asctime)s | %(levelname)s | %(name)s\n%(message)s",
     )
     logging.getLogger("pymongo").setLevel(logging.WARNING)
-    logging.getLogger().addHandler(TelegramLogHandler(bot, LOG_CHANNEL_ID))
+    telegram_handler = TelegramLogHandler(bot, LOG_CHANNEL_ID)
+    logging.getLogger("aiogram").addHandler(telegram_handler)
+    logging.getLogger().addHandler(telegram_handler)

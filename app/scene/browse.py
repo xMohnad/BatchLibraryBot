@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+import logging
 
 from aiogram import Bot, F
 from aiogram.fsm.context import FSMContext
@@ -12,13 +12,9 @@ from async_lru import alru_cache
 from app.data.config import ARCHIVE_CHANNEL
 from app.database.models import Action
 from app.database.models.course import Course, CourseType
-from app.utils import (
-    WORDS,
-    get_available_levels,
-    get_available_terms,
-    logger,
-    to_semester,
-)
+from app.utils import WORDS, get_available_levels, get_available_terms, to_semester
+
+logger = logging.getLogger(__name__)
 
 
 class BrowseScene(Scene, state="browse"):
@@ -112,23 +108,24 @@ class BrowseScene(Scene, state="browse"):
 
     async def _handle_file_download(
         self, message: Message, bot: Bot, state: FSMContext, answers: dict
-    ) -> Any:
+    ) -> None:
         """Handle file download process."""
         semester, is_practical = self.get_semester_and_type(answers)
-        selected_course = answers["course"]
-        selected_title = answers["file"]
+        course = answers["course"]
+        title = answers["file"]
 
         try:
-            courses = await self.get_courses(semester, is_practical, selected_course)
+            courses = await self.get_courses(semester, is_practical, course)
             if not courses:
                 await message.answer("المقرر غير موجود.")
                 return
 
             # Find the specific file
-            file_ids = []
-            for file in courses[0].files:
-                if file.title == selected_title:
-                    file_ids.append(file.archiveTelegramMessageId)
+            file_ids = [
+                file.archiveTelegramMessageId
+                for file in courses[0].files
+                if file.title == title
+            ]
 
             if not file_ids:
                 await message.answer("الملف غير موجود.")
@@ -143,11 +140,13 @@ class BrowseScene(Scene, state="browse"):
             )
 
         except Exception as e:
-            logger.exception("خطأ أثناء جلب الملفات: %s", e)
+            logger.exception(
+                "Error while fetching files (%s - %s):\n%s", course, title, e
+            )
             await message.answer("حدث خطأ أثناء جلب الملفات. الرجاء المحاولة لاحقاً.")
 
     @on.message.enter()
-    async def on_enter(self, message: Message, bot: Bot, state: FSMContext) -> Any:
+    async def on_enter(self, message: Message, bot: Bot, state: FSMContext) -> None:
         """Handle scene entry and step progression."""
         answers = await state.get_value("answers", {})
         step = len(answers)

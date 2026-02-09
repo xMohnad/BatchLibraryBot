@@ -7,6 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import (
     BotCommand,
     BotCommandScopeAllPrivateChats,
+    ErrorEvent,
     Update,
 )
 from beanie import init_beanie
@@ -30,6 +31,14 @@ bot = Bot(
 
 
 dp = Dispatcher()
+
+@dp.errors()
+async def global_error_handler(event: ErrorEvent):
+    """
+    Logs all uncaught exceptions during update processing and forwards them
+    to the Telegram log channel (especially required in Webhook mode).
+    """
+    logger.critical("Critical error caused by %s", event.exception, exc_info=True)
 
 
 async def init_bot() -> None:

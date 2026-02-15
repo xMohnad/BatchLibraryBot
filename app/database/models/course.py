@@ -26,6 +26,14 @@ class CourseType(str, Enum):
     THEORETICAL = "نظري"
 
 
+class MessageType(str, Enum):
+    """This object represents a supported type of content in a message."""
+
+    AUDIO = "audio"
+    DOCUMENT = "document"
+    VIDEO = "video"
+
+
 class Gender(str, Enum):
     """Enumeration of possible user genders."""
 
@@ -77,7 +85,6 @@ class CourseFile(BaseModel):
     """Human-readable title of the file."""
 
     archiveTelegramMessageId: int
-
     """Telegram message ID where the file is stored in the archive channel."""
 
     chatId: int
@@ -95,8 +102,11 @@ class CourseFile(BaseModel):
     originalName: str
     """Original filename as uploaded by the user."""
 
-    mimeType: str | None
+    mimeType: str
     """MIME type of the file (e.g., application/pdf, image/png)."""
+
+    telegramMessageType: MessageType
+    """The type of the message based on Telegram content (e.g., AUDIO, DOCUMENT, VIDEO)."""
 
     extension: str
     """File extension without dot (e.g., pdf, png, mp4)."""
@@ -127,22 +137,28 @@ class CourseFile(BaseModel):
         kwargs.setdefault("chatId", message.chat.id)
         kwargs.setdefault("title", match.group("title"))
 
-        file = message.document or message.video or message.audio
-        if not file:
+        content_type = message.content_type
+        file = getattr(message, content_type)
+        if content_type not in MessageType or not file:
             raise ValueError(
                 "Message does not contain a supported file (document, video, or audio)."
             )
 
-        if not (file_name := file.file_name) or not (file_size := file.file_size):
+        if (
+            not (file_name := file.file_name)
+            or not (file_size := file.file_size)
+            or not (mime_type := file.mime_type)
+        ):
             raise ValueError("Invalid file metadata received from Telegram.")
 
         extension = Path(file_name).suffix.lstrip(".")
         return cls(
             fileId=file.file_id,
             originalName=file_name,
-            mimeType=file.mime_type,
+            mimeType=mime_type,
             sizeBytes=file_size,
             extension=extension,
+            telegramMessageType=MessageType(content_type),
             **kwargs,
         )
 

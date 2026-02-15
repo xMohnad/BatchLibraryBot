@@ -88,10 +88,10 @@ class BrowseScene(Scene, state="browse"):
         semester, is_practical = self.get_semester_and_type(answers)
         courses = await self.get_courses(semester, is_practical)
 
-        if not courses:
+        options = [f"{course.courseName}" for course in courses if course.files]
+        if not courses or not options:
             return "لم يتم إضافة مواد لهذا الاختيار بعد.", []
 
-        options = [f"{course.courseName}" for course in courses if course.files]
         return "اختر المقرر:", options
 
     async def _prompt_files_selection(self, answers: dict) -> tuple[str, list[str]]:

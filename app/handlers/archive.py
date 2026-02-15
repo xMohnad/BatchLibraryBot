@@ -52,10 +52,10 @@ async def on_del_archive(message: Message, replied: Message) -> None:
     if result := await Course.find_one(
         Course.files.archiveTelegramMessageId == replied.message_id  # pyright: ignore[reportAttributeAccessIssue]
     ):
-        await replied.delete()
         await result.update(  # pyright: ignore[reportGeneralTypeIssues]
             {"$pull": {"files": {"archiveTelegramMessageId": replied.message_id}}}
         )
+        await replied.delete()
         logger.info(
             "Deleted specific file with message_id %d from course", replied.message_id
         )

@@ -4,12 +4,26 @@ import re
 from aiogram import Router
 from aiogram.types import (
     InlineQuery,
+    InlineQueryResultCachedAudio,
     InlineQueryResultCachedDocument,
+    InlineQueryResultCachedVideo,
 )
 
-from app.database.models.course import Course
+from app.database.models.course import Course, MessageType
 
 router = Router()
+
+LIMIT = 20
+
+
+def get_result_class(message_type: MessageType):
+    """Return the correct InlineQueryResult class based on Mess."""
+    if MessageType.AUDIO == message_type:
+        return InlineQueryResultCachedAudio
+    elif MessageType.VIDEO == message_type:
+        return InlineQueryResultCachedVideo
+    else:
+        return InlineQueryResultCachedDocument
 
 
 @router.inline_query()
@@ -20,28 +34,15 @@ async def search_course_files(query: InlineQuery):
     regex_pattern = re.escape(text)
 
     offset = int(query.offset) if query.offset else 0
-    limit = 20
+
     results_data = await Course.aggregate(
         [
-            {
-                "$match": {
-                    "$or": [
-                        {"courseName": {"$regex": regex_pattern, "$options": "i"}},
-                        {"tutorName": {"$regex": regex_pattern, "$options": "i"}},
-                        {"files.title": {"$regex": regex_pattern, "$options": "i"}},
-                        {
-                            "files.originalName": {
-                                "$regex": regex_pattern,
-                                "$options": "i",
-                            }
-                        },
-                    ]
-                }
-            },
             {"$unwind": "$files"},
             {
                 "$match": {
                     "$or": [
+                        {"courseName": {"$regex": regex_pattern, "$options": "i"}},
+                        {"tutorName": {"$regex": regex_pattern, "$options": "i"}},
                         {"files.title": {"$regex": regex_pattern, "$options": "i"}},
                         {
                             "files.originalName": {
@@ -49,8 +50,6 @@ async def search_course_files(query: InlineQuery):
                                 "$options": "i",
                             }
                         },
-                        {"courseName": {"$regex": regex_pattern, "$options": "i"}},
-                        {"tutorName": {"$regex": regex_pattern, "$options": "i"}},
                     ]
                 }
             },
@@ -61,7 +60,7 @@ async def search_course_files(query: InlineQuery):
                 }
             },
             {"$skip": offset},
-            {"$limit": limit},
+            {"$limit": LIMIT},
             {
                 "$project": {
                     "_id": 0,
@@ -70,35 +69,38 @@ async def search_course_files(query: InlineQuery):
                     "semester": 1,
                     "title": "$files.title",
                     "fileId": "$files.fileId",
+                    "fileName": "$files.originalName",
+                    "type": "$files.telegramMessageType",
                 }
             },
         ]
-    ).to_list(length=limit)
+    ).to_list(length=LIMIT)
 
     results = []
 
     for item in results_data:
-        file_id = item.get("fileId")
-        title = item.get("title")
-        if not file_id or not title:
-            continue
+        file_id = item["fileId"]
+        title = item["title"]
+        ttype = item["type"]
 
         results.append(
-            InlineQueryResultCachedDocument(
-                id=hashlib.md5(
-                    f"{file_id}:{item.get('courseName')}:{title}".encode()
-                ).hexdigest(),
-                title=f"{item.get('courseName')} {title}",
-                document_file_id=file_id,
-                description=f"{item.get('tutorName')} - الفصل {item.get('semester')}",
+            get_result_class(ttype)(
+                **{
+                    "id": hashlib.md5(f"{file_id}:{title}".encode()).hexdigest(),
+                    f"{ttype}_file_id": file_id,
+                    "title": f"{item.get('courseName')} {title}",
+                    "description": (
+                        f"{item.get('tutorName')} - الفصل {item.get('semester')} "
+                        f"- {item.get('fileName')}"
+                    ),
+                }
             )
         )
 
-    next_offset = str(offset + limit) if len(results) >= limit else ""
+    next_offset = str(offset + LIMIT) if len(results) >= LIMIT else ""
 
     await query.answer(
         results=results,
-        cache_time=60,
         is_personal=False,
         next_offset=next_offset,
     )

@@ -23,8 +23,6 @@ CAPTION_PATTERN = re.compile(
     r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)"
 )
 
-SUPPORTED_MEDIA = {"video", "document", "audio"}
-
 WORDS = {
     "الأول": 1,
     "الثاني": 2,

@@ -9,8 +9,8 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL
-from app.database.models.course import Course, CourseFile
-from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA, IdFilter
+from app.database.models.course import Course, CourseFile, MessageType
+from app.utils import CAPTION_PATTERN, IdFilter
 
 router = Router(name=__name__)
 
@@ -20,7 +20,7 @@ router.channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 
 
-@router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
+@router.channel_post(F.content_type.in_(MessageType))
 async def handle_archive_media(message: Message, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
@@ -40,7 +40,7 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
 
 
 @router.channel_post(
-    F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
+    F.reply_to_message.content_type.in_(MessageType),
     F.reply_to_message.caption.regexp(CAPTION_PATTERN),
     F.reply_to_message.as_("replied"),
     F.text.contains("del"),
@@ -64,7 +64,7 @@ async def on_del_archive(message: Message, replied: Message) -> None:
 
 
 @router.channel_post(
-    F.reply_to_message.content_type.in_(SUPPORTED_MEDIA),
+    F.reply_to_message.content_type.in_(MessageType),
     F.reply_to_message.caption.regexp(CAPTION_PATTERN).as_("match"),
     F.reply_to_message.as_("replied"),
     F.text.contains("edit"),
@@ -105,7 +105,7 @@ async def on_edit_archive_reply(
 
 
 @router.edited_channel_post(
-    F.content_type.in_(SUPPORTED_MEDIA),
+    F.content_type.in_(MessageType),
     F.caption.regexp(CAPTION_PATTERN).as_("match"),
 )
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:

@@ -8,8 +8,8 @@ from aiogram import Bot, F, Router
 from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
-from app.database.models.course import Course, CourseFile
-from app.utils import CAPTION_PATTERN, SUPPORTED_MEDIA, IdFilter
+from app.database.models.course import Course, CourseFile, MessageType
+from app.utils import CAPTION_PATTERN, IdFilter
 
 router = Router(name=__name__)
 
@@ -19,7 +19,7 @@ router.channel_post.filter(IdFilter(CHANNEL_ID))
 router.edited_channel_post.filter(IdFilter(CHANNEL_ID))
 
 
-@router.channel_post(F.content_type.in_(SUPPORTED_MEDIA))
+@router.channel_post(F.content_type.in_(MessageType))
 async def handle_media(message: Message, bot: Bot, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
@@ -53,7 +53,7 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
 
 
 @router.edited_channel_post(
-    F.content_type.in_(SUPPORTED_MEDIA),
+    F.content_type.in_(MessageType),
     F.caption.regexp(CAPTION_PATTERN).as_("match"),
 )
 async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:

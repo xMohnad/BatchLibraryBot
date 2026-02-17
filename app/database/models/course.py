@@ -192,15 +192,11 @@ class Course(BaseDocument):
     def level(self) -> str:
         return NUMBER[get_level(self.semester)]
 
-    @property
-    def term(self) -> str:
-        return NUMBER[get_term(self.semester)]
-
     def formatted_info(self, title: str) -> str:
         """Get formatted course information"""
         return (
             f"{self.courseName} ({self.tutorName}) | {title}\n\n"
-            f"#المستوى_{self.level} #الفصل_{self.term}"
+            f"#المستوى_{self.level} #الفصل_{NUMBER[self.semester]}"
         )
 
     @classmethod

@@ -9,6 +9,7 @@ from aiogram.types import Message
 from rapidfuzz import fuzz, process
 
 from app.data.config import CHANNEL_ID
+from app.database.models.ordinal import Ordinal
 
 
 class IdFilter(Filter):
@@ -22,18 +23,6 @@ class IdFilter(Filter):
 CAPTION_PATTERN = re.compile(
     r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)"
 )
-
-WORDS = {
-    "الأول": 1,
-    "الثاني": 2,
-    "الثالث": 3,
-    "الرابع": 4,
-    "الخامس": 5,
-    "السادس": 6,
-    "السابع": 7,
-    "الثامن": 8,
-}
-NUMBER = {v: k for k, v in WORDS.items()}
 
 
 logger = logging.getLogger(__name__)
@@ -89,7 +78,7 @@ def get_available_levels() -> list[str]:
     Example: ['الأول', 'الثاني']
     """
     current_level = get_level()
-    return [NUMBER[i] for i in range(1, current_level + 1)]
+    return [Ordinal.get_name(i) for i in range(1, current_level + 1)]
 
 
 def get_available_terms() -> list[str]:
@@ -98,7 +87,7 @@ def get_available_terms() -> list[str]:
     Example: ['الأول'] or ['الأول', 'الثاني']
     """
     current_term = get_term()
-    return [NUMBER[i] for i in range(1, current_term + 1)]
+    return [Ordinal.get_name(i) for i in range(1, current_term + 1)]
 
 
 def resolve_course_similarity(course: str, existing: list[str], threshold=90) -> str:

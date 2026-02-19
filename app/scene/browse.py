@@ -12,7 +12,8 @@ from async_lru import alru_cache
 from app.data.config import ARCHIVE_CHANNEL
 from app.database.models import Action
 from app.database.models.course import Course, CourseType
-from app.utils import WORDS, get_available_levels, get_available_terms, to_semester
+from app.database.models.ordinal import Ordinal
+from app.utils import get_available_levels, get_available_terms, to_semester
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,8 @@ class BrowseScene(Scene, state="browse"):
     def get_semester_and_type(answers: dict) -> tuple[int, bool]:
         """Convert user's answers to semester and practical flag."""
         semester = to_semester(
-            WORDS[answers["level"]],
-            WORDS[answers["term"]],
+            Ordinal.get_value(answers["level"]),
+            Ordinal.get_value(answers["term"]),
         )
         is_practical = answers["type"] == CourseType.PRACTICAL.value
         return semester, is_practical

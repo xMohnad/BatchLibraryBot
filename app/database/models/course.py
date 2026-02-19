@@ -12,13 +12,8 @@ from beanie import Document, Indexed, Replace, Save, before_event
 from pydantic import BaseModel, Field, model_validator
 from pydantic.fields import Field
 
-from app.utils import (
-    NUMBER,
-    get_level,
-    get_semester,
-    get_term,
-    resolve_course_similarity,
-)
+from app.database.models.ordinal import Ordinal
+from app.utils import get_level, get_semester, resolve_course_similarity
 
 
 class CourseType(str, Enum):
@@ -172,7 +167,7 @@ class Course(BaseDocument):
     tutorName: str
     """Name of the tutor or instructor."""
 
-    semester: int = Field(..., ge=1, le=8)
+    semester: Ordinal
     """Academic semester number (e.g., 1, 2, 3, ..., 8)."""
 
     isPractical: bool
@@ -190,13 +185,13 @@ class Course(BaseDocument):
 
     @property
     def level(self) -> str:
-        return NUMBER[get_level(self.semester)]
+        return Ordinal.get_name(get_level(self.semester))
 
     def formatted_info(self, title: str) -> str:
         """Get formatted course information"""
         return (
             f"{self.courseName} ({self.tutorName}) | {title}\n\n"
-            f"#المستوى_{self.level} #الفصل_{NUMBER[self.semester]}"
+            f"#المستوى_{self.level} #الفصل_{Ordinal.get_name(self.semester)}"
         )
 
     @classmethod

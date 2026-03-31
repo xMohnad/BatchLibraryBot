@@ -27,6 +27,7 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
 
     default = media_events[-1].caption or ""
     course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
+    course_captions: dict[str, str] = {}
     for msg in media_events:
         caption = msg.caption or default
         if match := CAPTION_PATTERN.search(caption):
@@ -34,8 +35,12 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
             course_file = await CourseFile.parse_file(msg, match)
             course_files[course_title].append(course_file)
 
+            if course_title not in course_captions:
+                course_captions[course_title] = caption
+
     for name, files in course_files.items():
-        if course := await Course.get_course(name):
+        caption = course_captions[name]
+        if course := await Course.get_course(name, caption):
             await course.upsert_files(files)
 
 
@@ -77,7 +82,7 @@ async def on_edit_archive_reply(
     logger.info("Edit command (%s) received", message.text)
 
     course_name: str = match.group("course")
-    if course := await Course.get_course(course_name):
+    if course := await Course.get_course(course_name, match.string):
         file = await CourseFile.parse_file(replied, match)
         try:
             await course.upsert_files([file])
@@ -112,7 +117,7 @@ async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None
     logger.info("Direct edit received")
 
     course_name: str = match.group("course")
-    if course := await Course.get_course(course_name):
+    if course := await Course.get_course(course_name, match.string):
         file = await CourseFile.parse_file(message, match)
         await course.upsert_files([file])
         logger.info(

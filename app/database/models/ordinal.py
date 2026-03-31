@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 
 
@@ -36,3 +37,23 @@ class Ordinal(int, Enum):
             Ordinal.get_value("الثالث") -> 3
         """
         return cls[name].value
+
+    @classmethod
+    def get_semester(cls, text: str | None = None) -> int:
+        """
+        Extract the semester number from a text containing a hashtag like '#الفصل_<name>'.
+
+        If the hashtag is not found, the default is the current semester
+
+        Args:
+            text (str): The text to search for the semester hashtag.
+
+        Returns:
+            int: The semester number corresponding to the ordinal name.
+        """
+        if not text or not (match := re.search(r"#الفصل_(\w+)", text)):
+            from app.utils import get_semester
+
+            return get_semester()
+
+        return cls.get_value(match.group(1))

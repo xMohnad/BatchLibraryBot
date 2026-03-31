@@ -210,12 +210,18 @@ class Course(BaseDocument):
 
     @classmethod
     @alru_cache(ttl=60 * 60 * 2)
-    async def get_course(
-        cls, courseName: str, semester: int = get_semester()
-    ) -> Course | None:
+    async def _get_course(cls, courseName: str, semester) -> Course | None:
+        """Fetch a Course object by name and semester with caching."""
         courses = await cls.get_courses_name(semester)
         course = resolve_course_similarity(courseName, courses)
         return await cls.find_one(cls.courseName == course, cls.semester == semester)
+
+    @classmethod
+    async def get_course(cls, courseName: str, caption: str) -> Course | None:
+        """Fetch a course by name using semester extracted from a caption."""
+        return await cls._get_course(
+            courseName=courseName, semester=Ordinal.get_semester(caption)
+        )
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Update file title if fileId exists, otherwise add new file."""

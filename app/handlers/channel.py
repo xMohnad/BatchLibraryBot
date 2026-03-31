@@ -25,6 +25,7 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
     logger.info("Handling new media post")
     default = media_events[-1].caption or ""
     course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
+    course_captions: dict[str, str] = {}
     for msg in media_events:
         caption = msg.caption or default
         if match := CAPTION_PATTERN.search(caption):
@@ -32,8 +33,12 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
             course_file = await CourseFile.parse_file(msg, match)
             course_files[course_title].append(course_file)
 
+            if course_title not in course_captions:
+                course_captions[course_title] = caption
+
     for name, files in course_files.items():
-        if course := await Course.get_course(name):
+        caption = course_captions[name]
+        if course := await Course.get_course(name, caption):
             for file in files:
                 logger.info(
                     "Copying course to archive. Original message_id: %d",
@@ -61,7 +66,7 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
     logger.info("Editing media post")
 
     course_name: str = match.group("course")
-    if course := await Course.get_course(course_name):
+    if course := await Course.get_course(course_name, match.string):
         files_by_id = {f.originalTelegramMessageId: f for f in course.files}
         if message.message_id in files_by_id:
             file = files_by_id[message.message_id]

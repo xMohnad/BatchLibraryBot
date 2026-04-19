@@ -224,20 +224,25 @@ class Course(BaseDocument):
         )
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
-        """Update file title if fileId exists, otherwise add new file."""
+        """Upsert files by archiveTelegramMessageId."""
 
-        files_by_id = {f.fileId: f for f in self.files}
+        files_by_id = {f.archiveTelegramMessageId: f for f in self.files}
         updated = False
 
-        for new_file in files:
-            if new_file.fileId in files_by_id:
-                existing_file = files_by_id[new_file.fileId]
-                if existing_file.title != new_file.title:
-                    existing_file.title = new_file.title
+        for f in files:
+            existing = files_by_id.get(f.archiveTelegramMessageId)
 
-            else:
-                # Add new file
-                self.files.append(new_file)
+            if not existing:
+                self.files.append(f)
+                updated = True
+                continue
+
+            if existing.title != f.title:
+                existing.title = f.title
+                updated = True
+
+            if existing.fileId != f.fileId:
+                existing.fileId = f.fileId  # expected to change
                 updated = True
 
         if updated:

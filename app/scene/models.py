@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, field_validator
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class File(BaseModel):

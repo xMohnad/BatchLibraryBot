@@ -21,6 +21,9 @@ MONGO_NAME=bot_database            # database name
 HOST_URL=https://yourdomain.com
 WEBHOOK_ENDPOINT=webhook
 WEBHOOK_SECRET=random_secret_string
+
+# Academic calendar
+SEMESTER_START_YEAR=2025           # Year treated as level 1 / term 1
 ```
 
 # Bot Setup
@@ -35,4 +38,4 @@ In your source channel, post media (video / document / audio) using the followin
 
 Course Name (Course Instructor) | Material Title
 
-The bot automatically calculates the **Level** and **Term** based on the current date, relative to the start year defined in `app/utils.py`, and stores this information in the database.
+The bot automatically calculates the **Level** and **Term** based on the current date, relative to the `SEMESTER_START_YEAR` environment variable, and stores this information in the database.

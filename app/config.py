@@ -10,6 +10,9 @@ env.read_env()
 
 
 TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
+
+SEMESTER_START_YEAR = env.int("SEMESTER_START_YEAR", 2025)
+
 CHANNEL_ID = env.int("CHANNEL_ID", default=0)
 ARCHIVE_CHANNEL = env.int("ARCHIVE_CHANNEL", default=0)
 LOG_CHANNEL_ID = env.int("LOG_CHANNEL_ID", default=None)

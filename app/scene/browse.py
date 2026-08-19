@@ -9,11 +9,10 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from async_lru import alru_cache
 
-from app.data.config import ARCHIVE_CHANNEL
-from app.database.models import Action
+from app.config import ARCHIVE_CHANNEL
 from app.database.models.course import Course, CourseType
 from app.database.models.ordinal import Ordinal
-from app.utils import get_available_levels, get_available_terms, to_semester
+from app.scene.models import Action
 
 if TYPE_CHECKING:
     from aiogram.fsm.context import FSMContext
@@ -45,7 +44,7 @@ class BrowseScene(Scene, state="browse"):
     @staticmethod
     def get_semester_and_type(answers: dict) -> tuple[int, bool]:
         """Convert user's answers to semester and practical flag."""
-        semester = to_semester(
+        semester = Ordinal.to_semester(
             Ordinal.get_value(answers["level"]),
             Ordinal.get_value(answers["term"]),
         )
@@ -84,10 +83,10 @@ class BrowseScene(Scene, state="browse"):
         return kb
 
     async def _prompt_level_selection(self, _: dict) -> tuple[str, list[str]]:
-        return "اختر المستوى:", get_available_levels()
+        return "اختر المستوى:", Ordinal.available_levels()
 
     async def _prompt_term_selection(self, _: dict) -> tuple[str, list[str]]:
-        return "اختر الفصل:", get_available_terms()
+        return "اختر الفصل:", Ordinal.available_terms()
 
     async def _prompt_type_selection(self, _: dict) -> tuple[str, list[str]]:
         return "اختر النوع:", [option.value for option in CourseType]

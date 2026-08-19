@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 
-from app.database.base import client
-
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from aiogram import Dispatcher
 
 
 # Source - https://stackoverflow.com/a/77894659
@@ -19,7 +19,7 @@ class MediaMiddleware(BaseMiddleware):
     """Middleware for handling media groups."""
 
     def __init__(self, latency: float = 0.01):
-        self.medias = {}
+        self.medias: dict[str, list[TelegramObject]] = {}
         self.latency = latency
         super().__init__()
 
@@ -43,18 +43,10 @@ class MediaMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
-class DatabaseMiddleware(BaseMiddleware):
-    async def __call__(
-        self,
-        handler: Callable[[TelegramObject, dict[str, object]], Awaitable[object]],
-        event: TelegramObject,
-        data: dict[str, object],
-    ) -> object:
-        async with client.start_session() as session:
-            data["session"] = session
-            await handler(event, data)
+middlewares = [MediaMiddleware]
 
 
-middlewares = [DatabaseMiddleware, MediaMiddleware]
-
-__all__ = ["middlewares"]
+async def setup_middlewares(dp: Dispatcher) -> None:
+    for middleware in middlewares:
+        dp.channel_post.middleware(middleware())
+        dp.message.middleware(middleware())

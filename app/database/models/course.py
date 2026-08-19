@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import re
+from collections import defaultdict
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -8,14 +11,36 @@ from typing import TYPE_CHECKING, Annotated, ClassVar, Self
 from async_lru import alru_cache
 from beanie import Document, Indexed, Replace, Save, before_event
 from pydantic import BaseModel, Field, model_validator
+from rapidfuzz import fuzz, process
 
 from app.database.models.ordinal import Ordinal
-from app.utils import get_level, get_semester, resolve_course_similarity
 
 if TYPE_CHECKING:
-    import re
-
     from aiogram.types import Message
+
+logger = logging.getLogger(__name__)
+
+CAPTION_PATTERN = re.compile(r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)")
+
+
+def _resolve_course_similarity(course: str, existing: list[str], threshold: int = 90) -> str:
+    """Match `course` against `existing` course names, tolerating minor typos."""
+    logger.info(f"Checking similarity for: '{course}'")
+
+    if course in existing:
+        logger.info(f"Exact match found in database for: '{course}'")
+        return course
+
+    match = process.extractOne(course, existing, scorer=fuzz.token_sort_ratio)
+
+    logger.info(f"Best match: {match}")
+
+    if match and match[1] >= threshold:
+        logger.info(f"Accepted → returning: '{match[0]}' (score={match[1]})")
+        return match[0]
+
+    logger.info(f"Rejected → returning original: '{course}'")
+    return course
 
 
 class CourseType(StrEnum):
@@ -151,6 +176,36 @@ class CourseFile(BaseModel):
             **kwargs,
         )
 
+    @classmethod
+    async def group_media_by_course(
+        cls,
+        media_events: list[Message],
+    ) -> tuple[dict[str, list[CourseFile]], dict[str, str]]:
+        """Group a batch of media messages (e.g. an album/media group) by course.
+
+        Messages in a media group only carry a caption on one item (usually the
+        first), so messages without their own caption fall back to the last
+        message's caption.
+
+        Returns:
+            A tuple of:
+            - course_files: course title -> list of parsed `CourseFile` objects
+            - course_captions: course title -> the caption used to resolve it
+        """
+        default_caption = media_events[-1].caption or ""
+        course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
+        course_captions: dict[str, str] = {}
+
+        for msg in media_events:
+            caption = msg.caption or default_caption
+            if match := CAPTION_PATTERN.search(caption):
+                course_title: str = match.group("course")
+                course_file = await cls.from_message(msg, match)
+                course_files[course_title].append(course_file)
+                course_captions.setdefault(course_title, caption)
+
+        return course_files, course_captions
+
 
 class Course(BaseDocument):
     """Represents a course linked to a subject and its files."""
@@ -179,7 +234,7 @@ class Course(BaseDocument):
 
     @property
     def level(self) -> str:
-        return Ordinal.get_name(get_level(self.semester))
+        return Ordinal.get_name(Ordinal.current_level(self.semester))
 
     def formatted_info(self, title: str) -> str:
         """Get formatted course information."""
@@ -192,7 +247,7 @@ class Course(BaseDocument):
     @alru_cache(ttl=60 * 60 * 2)
     async def get_courses_name(cls, semester: int | None = None) -> list[str]:
         """Retrieve course names for a given academic semester, defaults to the current semester."""
-        semester = semester if semester is not None else get_semester()
+        semester = semester if semester is not None else Ordinal.current_semester()
         return await cls.distinct(Course.courseName, {"semester": semester})
 
     @classmethod
@@ -200,7 +255,7 @@ class Course(BaseDocument):
     async def _get_course(cls, courseName: str, semester: int) -> Course | None:
         """Fetch a Course object by name and semester with caching."""
         courses = await cls.get_courses_name(semester)
-        course = resolve_course_similarity(courseName, courses)
+        course = _resolve_course_similarity(courseName, courses)
         return await cls.find_one(cls.courseName == course, cls.semester == semester)
 
     @classmethod

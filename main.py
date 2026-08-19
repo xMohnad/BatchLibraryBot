@@ -16,11 +16,12 @@ from beanie import init_beanie
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from app import setup_middlewares, setup_routes
-from app.data.config import TELEGRAM_BOT_TOKEN, WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
+from app.config import TELEGRAM_BOT_TOKEN, WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
 from app.database.base import database
 from app.database.models import Course
+from app.handlers import setup_routes
 from app.logger import setup_logging
+from app.middlewares import setup_middlewares
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +36,8 @@ dp = Dispatcher()
 
 @dp.errors()
 async def global_error_handler(event: ErrorEvent):
-    """
-    Logs all uncaught exceptions during update processing and forwards them
-    to the Telegram log channel (especially required in Webhook mode).
-    """
-    logger.critical("Critical error caused by %s", event.exception, exc_info=True)
+    """Logs all uncaught exceptions during update processing and forwards them to the Telegram log channel."""
+    logger.critical("Unhandled exception", exc_info=event.exception)
 
 
 async def init_bot() -> None:

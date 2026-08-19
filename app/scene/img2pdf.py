@@ -17,7 +17,7 @@ from aiogram.types import (
 )
 from PIL import Image
 
-from app.database.models import Action, File
+from app.scene.models import Action, File
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

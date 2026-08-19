@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
-from app.utils import logger
 from main import bot, dp, init_bot
+
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:

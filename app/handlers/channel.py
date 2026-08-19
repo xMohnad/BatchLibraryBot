@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
-from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
-from app.database.models.course import Course, CourseFile, MessageType
-from app.utils import CAPTION_PATTERN, IdFilter, group_media_by_course
+from app.config import ARCHIVE_CHANNEL, CHANNEL_ID
+from app.database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
+from app.filters import IdFilter
 
 if TYPE_CHECKING:
     import re
@@ -29,7 +29,7 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
 
-    course_files, course_captions = await group_media_by_course(media_events)
+    course_files, course_captions = await CourseFile.group_media_by_course(media_events)
 
     for name, files in course_files.items():
         caption = course_captions[name]

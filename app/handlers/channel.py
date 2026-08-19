@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-import re
-from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from aiogram import Bot, F, Router
-from aiogram.types import Message
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
 from app.data.config import ARCHIVE_CHANNEL, CHANNEL_ID
 from app.database.models.course import Course, CourseFile, MessageType
-from app.utils import CAPTION_PATTERN, IdFilter
+from app.utils import CAPTION_PATTERN, IdFilter, group_media_by_course
+
+if TYPE_CHECKING:
+    import re
+
+    from aiogram.types import Message, MessageId
 
 router = Router(name=__name__)
 
@@ -23,38 +28,55 @@ router.edited_channel_post.filter(IdFilter(CHANNEL_ID))
 async def handle_media(message: Message, bot: Bot, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
-    default = media_events[-1].caption or ""
-    course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
-    course_captions: dict[str, str] = {}
-    for msg in media_events:
-        caption = msg.caption or default
-        if match := CAPTION_PATTERN.search(caption):
-            course_title: str = match.group("course")
-            course_file = await CourseFile.parse_file(msg, match)
-            course_files[course_title].append(course_file)
 
-            if course_title not in course_captions:
-                course_captions[course_title] = caption
+    course_files, course_captions = await group_media_by_course(media_events)
 
     for name, files in course_files.items():
         caption = course_captions[name]
         if course := await Course.get_course(name, caption):
+            copied_files: list[CourseFile] = []
             for file in files:
                 logger.info(
                     "Copying course to archive. Original message_id: %d",
                     file.originalTelegramMessageId,
                 )
-                copied = await bot.copy_message(
-                    ARCHIVE_CHANNEL,
-                    file.fromChatId,
-                    file.originalTelegramMessageId,
-                    caption=course.formatted_info(file.title),
-                )
+                try:
+                    copied = await _copy_to_archive(bot, file, course.formatted_info(file.title))
+                except TelegramBadRequest:
+                    logger.exception(
+                        "Failed to copy message_id %d to archive; skipping file.",
+                        file.originalTelegramMessageId,
+                    )
+                    continue
+
                 file.archiveTelegramMessageId = copied.message_id
+                copied_files.append(file)
 
                 logger.info("Course copied. New message_id: %d", copied.message_id)
-            await course.upsert_files(files)
-            logger.info("Parsed %d courses from media posts", len(files))
+
+            if copied_files:
+                await course.upsert_files(copied_files)
+            logger.info("Parsed %d file(s) for course '%s'", len(copied_files), name)
+
+
+async def _copy_to_archive(bot: Bot, file: CourseFile, caption: str) -> MessageId:
+    """Copy a message to the archive channel, retrying once on flood-wait."""
+    try:
+        return await bot.copy_message(
+            ARCHIVE_CHANNEL,
+            file.fromChatId,
+            file.originalTelegramMessageId,
+            caption=caption,
+        )
+    except TelegramRetryAfter as e:
+        logger.warning("Rate limited; sleeping for %s seconds", e.retry_after)
+        await asyncio.sleep(e.retry_after)
+        return await bot.copy_message(
+            ARCHIVE_CHANNEL,
+            file.fromChatId,
+            file.originalTelegramMessageId,
+            caption=caption,
+        )
 
 
 @router.edited_channel_post(
@@ -94,17 +116,14 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             logger.info(
                 f"File NOT found in course (Message ID: {message.message_id}). Treating as new file addition..."
             )
-            file = await CourseFile.parse_file(message, match)
+            file = await CourseFile.from_message(message, match)
             logger.info(
                 "Copying course to archive. Original message_id: %d",
                 file.originalTelegramMessageId,
             )
-            copied = await bot.copy_message(
-                ARCHIVE_CHANNEL,
-                file.fromChatId,
-                file.originalTelegramMessageId,
-                caption=course.formatted_info(file.title),
-            )
+
+            copied = await _copy_to_archive(bot, file, course.formatted_info(file.title))
+
             file.archiveTelegramMessageId = copied.message_id
             course.files.append(file)
             await course.save()

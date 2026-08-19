@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import Message
 
 from app.data.config import ARCHIVE_CHANNEL
 from app.database.models.course import Course, CourseFile, MessageType
-from app.utils import CAPTION_PATTERN, IdFilter
+from app.utils import CAPTION_PATTERN, IdFilter, group_media_by_course
+
+if TYPE_CHECKING:
+    from aiogram.types import Message
 
 router = Router(name=__name__)
 
@@ -19,24 +21,16 @@ logger = logging.getLogger(__name__)
 router.channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 router.edited_channel_post.filter(IdFilter(ARCHIVE_CHANNEL))
 
+DELETE_COMMAND = re.compile(r"^/?del(ete)?$", re.IGNORECASE)
+EDIT_COMMAND = re.compile(r"^/?edit$", re.IGNORECASE)
+
 
 @router.channel_post(F.content_type.in_(MessageType))
 async def handle_archive_media(message: Message, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
     logger.info("Handling new media post")
 
-    default = media_events[-1].caption or ""
-    course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
-    course_captions: dict[str, str] = {}
-    for msg in media_events:
-        caption = msg.caption or default
-        if match := CAPTION_PATTERN.search(caption):
-            course_title: str = match.group("course")
-            course_file = await CourseFile.parse_file(msg, match)
-            course_files[course_title].append(course_file)
-
-            if course_title not in course_captions:
-                course_captions[course_title] = caption
+    course_files, course_captions = await group_media_by_course(media_events)
 
     for name, files in course_files.items():
         caption = course_captions[name]
@@ -48,7 +42,7 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
     F.reply_to_message.content_type.in_(MessageType),
     F.reply_to_message.caption.regexp(CAPTION_PATTERN),
     F.reply_to_message.as_("replied"),
-    F.text.contains("del"),
+    F.text.regexp(DELETE_COMMAND),
 )
 async def on_del_archive(message: Message, replied: Message) -> None:
     """Handle edited media post."""
@@ -60,9 +54,7 @@ async def on_del_archive(message: Message, replied: Message) -> None:
         await result.update(  # pyright: ignore[reportGeneralTypeIssues]
             {"$pull": {"files": {"archiveTelegramMessageId": replied.message_id}}}
         )
-        logger.info(
-            "Deleted specific file with message_id %d from course", replied.message_id
-        )
+        logger.info("Deleted specific file with message_id %d from course", replied.message_id)
 
     await message.delete()
 
@@ -71,7 +63,7 @@ async def on_del_archive(message: Message, replied: Message) -> None:
     F.reply_to_message.content_type.in_(MessageType),
     F.reply_to_message.caption.regexp(CAPTION_PATTERN).as_("match"),
     F.reply_to_message.as_("replied"),
-    F.text.contains("edit"),
+    F.text.regexp(EDIT_COMMAND),
 )
 async def on_edit_archive_reply(
     message: Message,
@@ -83,7 +75,7 @@ async def on_edit_archive_reply(
 
     course_name: str = match.group("course")
     if course := await Course.get_course(course_name, match.string):
-        file = await CourseFile.parse_file(replied, match)
+        file = await CourseFile.from_message(replied, match)
         try:
             await course.upsert_files([file])
             await replied.edit_caption(caption=course.formatted_info(file.title))
@@ -98,11 +90,9 @@ async def on_edit_archive_reply(
                     file.archiveTelegramMessageId,
                 )
             else:
-                logger.error(
-                    "Telegram API error while updating Message ID %d: %s",
+                logger.exception(
+                    "Telegram API error while updating Message ID %d",
                     file.archiveTelegramMessageId,
-                    e,
-                    exc_info=True,
                 )
 
     await message.delete()
@@ -118,7 +108,7 @@ async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None
 
     course_name: str = match.group("course")
     if course := await Course.get_course(course_name, match.string):
-        file = await CourseFile.parse_file(message, match)
+        file = await CourseFile.from_message(message, match)
         await course.upsert_files([file])
         logger.info(
             "Updated course with message_id %d (direct edit)",

@@ -1,27 +1,29 @@
 from __future__ import annotations
 
-import re
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Self
+from typing import TYPE_CHECKING, Annotated, ClassVar, Self
 
-from aiogram.types import Message
 from async_lru import alru_cache
 from beanie import Document, Indexed, Replace, Save, before_event
 from pydantic import BaseModel, Field, model_validator
-from pydantic.fields import Field
 
 from app.database.models.ordinal import Ordinal
 from app.utils import get_level, get_semester, resolve_course_similarity
 
+if TYPE_CHECKING:
+    import re
 
-class CourseType(str, Enum):
+    from aiogram.types import Message
+
+
+class CourseType(StrEnum):
     PRACTICAL = "عملي"
     THEORETICAL = "نظري"
 
 
-class MessageType(str, Enum):
+class MessageType(StrEnum):
     """This object represents a supported type of content in a message."""
 
     AUDIO = "audio"
@@ -29,7 +31,7 @@ class MessageType(str, Enum):
     VIDEO = "video"
 
 
-class Gender(str, Enum):
+class Gender(StrEnum):
     """Enumeration of possible user genders."""
 
     male = "male"
@@ -45,16 +47,16 @@ class Gender(str, Enum):
 class BaseDocument(Document):
     """Base document containing common timestamp fields."""
 
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Date and time when the document was created (UTC)."""
 
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Date and time when the document was last updated (UTC)."""
 
     @before_event(Save, Replace)
     def update_timestamp(self):
         """Automatically updates the 'updatedAt' field before saving or replacing the document."""
-        self.updatedAt = datetime.now(timezone.utc)
+        self.updatedAt = datetime.now(UTC)
 
 
 class Users(BaseDocument):
@@ -109,23 +111,21 @@ class CourseFile(BaseModel):
     sizeBytes: int
     """File size in bytes."""
 
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Date and time when the document was created (UTC)."""
 
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Date and time when the document was last updated (UTC)."""
 
     @model_validator(mode="after")
     def update_timestamp(self) -> Self:
         """Automatically updates the 'updatedAt' field after updates any field."""
-        self.updatedAt = datetime.now(timezone.utc)
+        self.updatedAt = datetime.now(UTC)
         return self
 
     @classmethod
-    async def parse_file(
-        cls, message: Message, match: re.Match[str], **kwargs
-    ) -> CourseFile:
-        """Parse course file information from a Telegram message."""
+    async def from_message(cls, message: Message, match: re.Match[str], **kwargs) -> CourseFile:
+        """Build a CourseFile from a Telegram message."""
         kwargs.setdefault("originalTelegramMessageId", message.message_id)
         kwargs.setdefault("archiveTelegramMessageId", message.message_id)
         kwargs.setdefault("fromChatId", message.chat.id)
@@ -135,15 +135,9 @@ class CourseFile(BaseModel):
         content_type = message.content_type
         file = getattr(message, content_type)
         if content_type not in MessageType or not file:
-            raise ValueError(
-                "Message does not contain a supported file (document, video, or audio)."
-            )
+            raise ValueError("Message does not contain a supported file (document, video, or audio).")
 
-        if (
-            not (file_name := file.file_name)
-            or not (file_size := file.file_size)
-            or not (mime_type := file.mime_type)
-        ):
+        if not (file_name := file.file_name) or not (file_size := file.file_size) or not (mime_type := file.mime_type):
             raise ValueError("Invalid file metadata received from Telegram.")
 
         extension = Path(file_name).suffix.lstrip(".")
@@ -177,7 +171,7 @@ class Course(BaseDocument):
     """List of files associated with this course."""
 
     class Settings:
-        indexes = [
+        indexes: ClassVar[list[str]] = [
             "files.originalTelegramMessageId",
             "files.archiveTelegramMessageId",
             "files.fileId",
@@ -188,7 +182,7 @@ class Course(BaseDocument):
         return Ordinal.get_name(get_level(self.semester))
 
     def formatted_info(self, title: str) -> str:
-        """Get formatted course information"""
+        """Get formatted course information."""
         return (
             f"{self.courseName} ({self.tutorName}) | {title}\n\n"
             f"#المستوى_{self.level} #الفصل_{Ordinal.get_name(self.semester)}"
@@ -196,21 +190,14 @@ class Course(BaseDocument):
 
     @classmethod
     @alru_cache(ttl=60 * 60 * 2)
-    async def get_courses_name(cls, semester: int = get_semester()) -> list[str]:
-        """
-        Retrieve course names for a given academic
-
-        Results are cached to reduce repeated database queries
-        for the same semester.
-
-        Returns:
-            list[str]: A list of course names associated with the given semester.
-        """
+    async def get_courses_name(cls, semester: int | None = None) -> list[str]:
+        """Retrieve course names for a given academic semester, defaults to the current semester."""
+        semester = semester if semester is not None else get_semester()
         return await cls.distinct(Course.courseName, {"semester": semester})
 
     @classmethod
     @alru_cache(ttl=60 * 60 * 2)
-    async def _get_course(cls, courseName: str, semester) -> Course | None:
+    async def _get_course(cls, courseName: str, semester: int) -> Course | None:
         """Fetch a Course object by name and semester with caching."""
         courses = await cls.get_courses_name(semester)
         course = resolve_course_similarity(courseName, courses)
@@ -219,13 +206,10 @@ class Course(BaseDocument):
     @classmethod
     async def get_course(cls, courseName: str, caption: str) -> Course | None:
         """Fetch a course by name using semester extracted from a caption."""
-        return await cls._get_course(
-            courseName=courseName, semester=Ordinal.get_semester(caption)
-        )
+        return await cls._get_course(courseName=courseName, semester=Ordinal.get_semester(caption))
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""
-
         files_by_id = {f.archiveTelegramMessageId: f for f in self.files}
         updated = False
 

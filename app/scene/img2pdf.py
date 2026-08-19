@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING
 
 from aiogram import Bot, F
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.scene import Scene, on
 from aiogram.types import (
     BufferedInputFile,
@@ -19,6 +18,11 @@ from aiogram.types import (
 from PIL import Image
 
 from app.database.models import Action, File
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from aiogram.fsm.context import FSMContext
 
 
 class Img2PdfScene(Scene, state="img2pdf"):
@@ -70,9 +74,7 @@ class Img2PdfScene(Scene, state="img2pdf"):
         await self._delete_previous_answer(state)
         await state.update_data(answer=answer, file=file)
 
-    async def _store_images(
-        self, state: FSMContext, new_ids: Iterable[str]
-    ) -> list[str]:
+    async def _store_images(self, state: FSMContext, new_ids: Iterable[str]) -> list[str]:
         """Store image file_ids in state while preserving order."""
         images: list[str] = await state.get_value("images", [])
 
@@ -87,8 +89,7 @@ class Img2PdfScene(Scene, state="img2pdf"):
         """Send a status message showing current image count."""
         await self._delete_previous_answer(state)
         answer = await message.answer(
-            f"🖼 عدد الصور الحالي: {count}\n\n"
-            "💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
+            f"🖼 عدد الصور الحالي: {count}\n\n💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
             reply_markup=self.PDF_KEYBOARD,
         )
         await state.update_data(answer=answer)
@@ -106,16 +107,13 @@ class Img2PdfScene(Scene, state="img2pdf"):
         if message := event.message if isinstance(event, CallbackQuery) else event:
             await state.set_data({})
             answer = await message.answer(
-                "قم بإرسال الصور المراد تحويلها إلى PDF.\n\n"
-                "💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
+                "قم بإرسال الصور المراد تحويلها إلى PDF.\n\n💡 ملاحظة: سيتم ترتيب الصور حسب الترتيب الذي أرسلتها به",
                 reply_markup=ReplyKeyboardRemove(),
             )
             await state.update_data(answer=answer)
 
     @on.message(F.photo, F.media_group_id)
-    async def on_album(
-        self, message: Message, media_events: list[Message], state: FSMContext
-    ) -> None:
+    async def on_album(self, message: Message, media_events: list[Message], state: FSMContext) -> None:
         """Handle photo albums."""
         new_ids = [event.photo[-1].file_id for event in media_events if event.photo]
         images = await self._store_images(state, new_ids)
@@ -140,9 +138,7 @@ class Img2PdfScene(Scene, state="img2pdf"):
         await self.wizard.retake()
 
     @on.callback_query(F.data == Action.convert, F.message.as_("message"))
-    async def on_convert(
-        self, callback: CallbackQuery, message: Message, state: FSMContext, bot: Bot
-    ):
+    async def on_convert(self, callback: CallbackQuery, message: Message, state: FSMContext, bot: Bot):
         """Convert stored images into a single PDF."""
         stored_images: list[str] = await state.get_value("images", [])
         if not stored_images:
@@ -179,11 +175,7 @@ class Img2PdfScene(Scene, state="img2pdf"):
     async def on_edit_request(self, callback: CallbackQuery, state: FSMContext):
         """Enter edit mode for the generated PDF."""
         action = callback.data
-        prompt: str = (
-            "أرسل اسم الملف الجديد:"
-            if action == Action.filename
-            else "أرسل الوصف الجديد:"
-        )
+        prompt: str = "أرسل اسم الملف الجديد:" if action == Action.filename else "أرسل الوصف الجديد:"
 
         if callback.message:
             await callback.message.answer(prompt)
@@ -192,7 +184,7 @@ class Img2PdfScene(Scene, state="img2pdf"):
         await callback.answer()
 
     @on.message()
-    async def on_edit_input(self, message: Message, state: FSMContext):
+    async def on_edit_input(self, message: Message, state: FSMContext) -> None:
         """Handle user input while in edit mode."""
         edit_mode: Action | None = await state.get_value("edit_mode")
         file: File | None = await state.get_value("file")

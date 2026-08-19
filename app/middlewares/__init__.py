@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from aiogram import Dispatcher
+from typing import TYPE_CHECKING
 
 from .channel import middlewares as channel_middleware
+
+if TYPE_CHECKING:
+    from aiogram import Dispatcher
 
 
 async def setup_middlewares(dp: Dispatcher):

@@ -3,13 +3,13 @@ from enum import Enum
 
 
 class Ordinal(int, Enum):
-    """
-    Enum representing Arabic ordinal numbers from الأول to الثامن.
+    """Enum representing Arabic ordinal numbers from الأول to الثامن.
+
     Provides helper methods for converting between number and name.
     """
 
     الأول = 1
-    الاول = 1
+    الاول = الأول  # alias
     الثاني = 2
     الثالث = 3
     الرابع = 4
@@ -20,8 +20,7 @@ class Ordinal(int, Enum):
 
     @classmethod
     def get_name(cls, value: int) -> str:
-        """
-        Return the Arabic ordinal name for a given integer value.
+        """Return the Arabic ordinal name for a given integer value.
 
         Example:
             Ordinal.get_name(3) -> "الثالث"
@@ -30,8 +29,7 @@ class Ordinal(int, Enum):
 
     @classmethod
     def get_value(cls, name: str) -> int:
-        """
-        Return the integer value for a given Arabic ordinal name.
+        """Return the integer value for a given Arabic ordinal name.
 
         Example:
             Ordinal.get_value("الثالث") -> 3
@@ -40,8 +38,7 @@ class Ordinal(int, Enum):
 
     @classmethod
     def get_semester(cls, text: str | None = None) -> int:
-        """
-        Extract the semester number from a text containing a hashtag like '#الفصل_<name>'.
+        """Extract the semester number from a text containing a hashtag like '#الفصل_<name>'.
 
         If the hashtag is not found, the default is the current semester
 

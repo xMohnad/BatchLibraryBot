@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING, ClassVar
 
 from aiogram import Bot, F
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.scene import Scene, SceneWizard, on
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
@@ -14,6 +14,9 @@ from app.database.models import Action
 from app.database.models.course import Course, CourseType
 from app.database.models.ordinal import Ordinal
 from app.utils import get_available_levels, get_available_terms, to_semester
+
+if TYPE_CHECKING:
+    from aiogram.fsm.context import FSMContext
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,11 @@ class BrowseScene(Scene, state="browse"):
         ]
 
     # Navigation actions
-    NAVIGATION_ACTIONS = {Action.back, Action.restart, Action.exit}
+    NAVIGATION_ACTIONS: ClassVar[set[Action]] = {
+        Action.back,
+        Action.restart,
+        Action.exit,
+    }
 
     @staticmethod
     def get_semester_and_type(answers: dict) -> tuple[int, bool]:
@@ -45,9 +52,10 @@ class BrowseScene(Scene, state="browse"):
         is_practical = answers["type"] == CourseType.PRACTICAL.value
         return semester, is_practical
 
-    @alru_cache(maxsize=128)
+    @classmethod
+    @alru_cache(ttl=60 * 60 * 2)
     async def get_courses(
-        self,
+        cls,
         semester: int,
         is_practical: bool,
         course_name: str | None = None,
@@ -107,9 +115,7 @@ class BrowseScene(Scene, state="browse"):
         options = {file.title for file in courses[0].files}
         return "اختر المادة:", list(options)
 
-    async def _handle_file_download(
-        self, message: Message, bot: Bot, state: FSMContext, answers: dict
-    ) -> None:
+    async def _handle_file_download(self, message: Message, bot: Bot, state: FSMContext, answers: dict) -> None:
         """Handle file download process."""
         semester, is_practical = self.get_semester_and_type(answers)
         course = answers["course"]
@@ -122,11 +128,7 @@ class BrowseScene(Scene, state="browse"):
                 return
 
             # Find the specific file
-            file_ids = [
-                file.archiveTelegramMessageId
-                for file in courses[0].files
-                if file.title == title
-            ]
+            file_ids = [file.archiveTelegramMessageId for file in courses[0].files if file.title == title]
 
             if not file_ids:
                 await message.answer("الملف غير موجود.")
@@ -140,10 +142,8 @@ class BrowseScene(Scene, state="browse"):
                 remove_caption=True,
             )
 
-        except Exception as e:
-            logger.exception(
-                "Error while fetching files (%s - %s):\n%s", course, title, e
-            )
+        except Exception:
+            logger.exception("Error while fetching files (%s - %s)", course, title)
             await message.answer("حدث خطأ أثناء جلب الملفات. الرجاء المحاولة لاحقاً.")
 
     @on.message.enter()
@@ -183,9 +183,7 @@ class BrowseScene(Scene, state="browse"):
 
         await message.answer(
             prompt,
-            reply_markup=self.build_keyboard(options, step).as_markup(
-                resize_keyboard=True
-            ),
+            reply_markup=self.build_keyboard(options, step).as_markup(resize_keyboard=True),
         )
 
     @on.message(F.text.in_(NAVIGATION_ACTIONS))

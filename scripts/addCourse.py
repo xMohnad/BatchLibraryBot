@@ -5,6 +5,7 @@ import asyncio
 from beanie import init_beanie
 
 from app.database.base import database
+from app.database.models import Ordinal
 from app.database.models.course import Course
 
 
@@ -18,7 +19,7 @@ async def main():
     await Course(
         courseName="",
         tutorName="",
-        semester=2,
+        semester=Ordinal(3),
         isPractical=True,
         files=[],
     ).insert()

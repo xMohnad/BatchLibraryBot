@@ -1,31 +1,34 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from aiogram.types import Message, TelegramObject
 
 from app.database.base import client
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 # Source - https://stackoverflow.com/a/77894659
 # Posted by abuztrade, modified by community. See post 'Timeline' for change history
 # Retrieved 2025-12-01, License - CC BY-SA 4.0
 class MediaMiddleware(BaseMiddleware):
-    """Middleware for handling media groups"""
+    """Middleware for handling media groups."""
 
-    def __init__(self, latency: int | float = 0.01):
+    def __init__(self, latency: float = 0.01):
         self.medias = {}
         self.latency = latency
-        super(MediaMiddleware, self).__init__()
+        super().__init__()
 
     async def __call__(
         self,
-        handler: Callable[[Message | CallbackQuery, dict[str, Any]], Awaitable[Any]],
-        event: Message | CallbackQuery,
-        data: dict[str, Any],
-    ) -> Any:
+        handler: Callable[[TelegramObject, dict[str, object]], Awaitable[object]],
+        event: TelegramObject,
+        data: dict[str, object],
+    ) -> object:
         data["media_events"] = [event]
         if isinstance(event, Message) and event.media_group_id:
             try:
@@ -43,10 +46,10 @@ class MediaMiddleware(BaseMiddleware):
 class DatabaseMiddleware(BaseMiddleware):
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, object]], Awaitable[object]],
         event: TelegramObject,
-        data: dict[str, Any],
-    ) -> Any:
+        data: dict[str, object],
+    ) -> object:
         async with client.start_session() as session:
             data["session"] = session
             await handler(event, data)

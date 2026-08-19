@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -24,13 +26,12 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(
     TELEGRAM_BOT_TOKEN,
-    default=DefaultBotProperties(
-        parse_mode=ParseMode.HTML, link_preview_is_disabled=True
-    ),
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True),
 )
 
 
 dp = Dispatcher()
+
 
 @dp.errors()
 async def global_error_handler(event: ErrorEvent):
@@ -63,6 +64,13 @@ async def init_bot() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not WEBHOOK_URL:
+        raise RuntimeError(
+            "WEBHOOK_URL is not configured. Set HOST_URL (and optionally "
+            "WEBHOOK_ENDPOINT) in the environment, or run the bot in polling "
+            "mode via testing.py instead."
+        )
+
     await init_bot()
     await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
     logger.info("Webhook set and bot ready")

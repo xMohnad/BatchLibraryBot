@@ -8,4 +8,4 @@ async def setup_routes(dp: Dispatcher):
     dp.include_routers(*routers)
 
 
-__all__ = ["setup_routes", "setup_middlewares"]
+__all__ = ["setup_middlewares", "setup_routes"]

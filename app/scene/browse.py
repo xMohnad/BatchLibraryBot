@@ -4,8 +4,8 @@ import logging
 from typing import TYPE_CHECKING, ClassVar
 
 from aiogram import Bot, F
-from aiogram.fsm.scene import Scene, SceneWizard, on
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardRemove
+from aiogram.fsm.scene import Scene, on
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from async_lru import alru_cache
 
@@ -15,59 +15,56 @@ from app.database.models.ordinal import Ordinal
 from app.scene.models import Action
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from aiogram.fsm.context import FSMContext
 
 logger = logging.getLogger(__name__)
 
 
 class BrowseScene(Scene, state="browse"):
-    """Scene for browsing courses and files."""
+    """Scene for browsing courses and files, one question at a time.
 
-    def __init__(self, wizard: SceneWizard) -> None:
-        super().__init__(wizard)
-        # Step handlers mapping
-        self.STEP_HANDLERS = [
-            ("level", self._prompt_level_selection),
-            ("term", self._prompt_term_selection),
-            ("type", self._prompt_type_selection),
-            ("course", self._prompt_courses_selection),
-            ("file", self._prompt_files_selection),
-        ]
+    Each entry in `STEPS` names an answer key; the matching `_prompt_<key>_selection`
+    method returns the prompt text and the options to show for that step. Once every
+    step has an answer, the extra "virtual" step triggers `_handle_file_download`.
+    """
 
-    # Navigation actions
-    NAVIGATION_ACTIONS: ClassVar[set[Action]] = {
-        Action.back,
-        Action.restart,
-        Action.exit,
-    }
+    STEPS: ClassVar[tuple[str, ...]] = ("level", "term", "type", "course", "file")
+    NAVIGATION_ACTIONS: ClassVar[set[Action]] = {Action.back, Action.restart, Action.exit}
+
+    def _step_prompt(self, step_key: str) -> Callable[[dict], Awaitable[tuple[str, list[str]]]]:
+        return getattr(self, f"_prompt_{step_key}_selection")
 
     @staticmethod
-    def get_semester_and_type(answers: dict) -> tuple[int, bool]:
-        """Convert user's answers to semester and practical flag."""
-        semester = Ordinal.to_semester(
-            Ordinal.get_value(answers["level"]),
-            Ordinal.get_value(answers["term"]),
-        )
-        is_practical = answers["type"] == CourseType.PRACTICAL.value
-        return semester, is_practical
+    async def _go_back(state: FSMContext, answers: dict) -> None:
+        """Drop the most recent answer, returning the user to the previous step."""
+        answers.popitem()
+        await state.update_data(answers=answers)
 
     @classmethod
     @alru_cache(ttl=60 * 60 * 2)
-    async def get_courses(
-        cls,
-        semester: int,
-        is_practical: bool,
-        course_name: str | None = None,
-    ) -> list[Course]:
+    async def get_courses(cls, semester: int, is_practical: bool, course_name: str | None = None) -> list[Course]:
         """Fetch courses with caching."""
         query = {Course.semester: semester, Course.isPractical: is_practical}
         if course_name:
-            query[Course.courseName] = course_name.strip()
+            query[Course.courseName] = course_name
 
         return await Course.find(query).to_list()
 
-    def build_keyboard(self, options: list[str], step: int) -> ReplyKeyboardBuilder:
-        """Build reply keyboard with options and navigation buttons."""
+    async def _get_matching_courses(self, answers: dict, course_name: str | None = None) -> list[Course]:
+        """Resolve semester/type from `answers` and fetch matching courses."""
+        semester, is_practical = (
+            Ordinal.to_semester(
+                Ordinal.get_value(answers["level"]),
+                Ordinal.get_value(answers["term"]),
+            ),
+            answers["type"] == CourseType.PRACTICAL.value,
+        )
+        return await self.get_courses(semester, is_practical, course_name)
+
+    def build_keyboard(self, options: list[str], step: int) -> ReplyKeyboardMarkup:
+        """Build a reply keyboard with the given options plus navigation buttons."""
         kb = ReplyKeyboardBuilder()
 
         for opt in options:
@@ -80,7 +77,7 @@ class BrowseScene(Scene, state="browse"):
             )
 
         kb.row(KeyboardButton(text=Action.exit))
-        return kb
+        return kb.as_markup(resize_keyboard=True)
 
     async def _prompt_level_selection(self, _: dict) -> tuple[str, list[str]]:
         return "اختر المستوى:", Ordinal.available_levels()
@@ -91,55 +88,41 @@ class BrowseScene(Scene, state="browse"):
     async def _prompt_type_selection(self, _: dict) -> tuple[str, list[str]]:
         return "اختر النوع:", [option.value for option in CourseType]
 
-    async def _prompt_courses_selection(self, answers: dict) -> tuple[str, list[str]]:
-        """Return available courses for selection."""
-        semester, is_practical = self.get_semester_and_type(answers)
-        courses = await self.get_courses(semester, is_practical)
+    async def _prompt_course_selection(self, answers: dict) -> tuple[str, list[str]]:
+        """Return available courses for the chosen level/term/type."""
+        courses = await self._get_matching_courses(answers)
+        options = [course.courseName for course in courses if course.files]
 
-        options = [f"{course.courseName}" for course in courses if course.files]
-        if not courses or not options:
+        if not options:
             return "لم يتم إضافة مواد لهذا الاختيار بعد.", []
-
         return "اختر المقرر:", options
 
-    async def _prompt_files_selection(self, answers: dict) -> tuple[str, list[str]]:
+    async def _prompt_file_selection(self, answers: dict) -> tuple[str, list[str]]:
         """Return available files for the selected course."""
-        semester, is_practical = self.get_semester_and_type(answers)
-        selected_course = answers["course"]
+        courses = await self._get_matching_courses(answers, answers["course"])
 
-        courses = await self.get_courses(semester, is_practical, selected_course)
         if not courses or not courses[0].files:
             return "لا توجد ملفات للمقرر المحدد.", []
 
         options = {file.title for file in courses[0].files}
-        return "اختر المادة:", list(options)
+        return "اختر المادة:", sorted(options)
 
-    async def _handle_file_download(self, message: Message, bot: Bot, state: FSMContext, answers: dict) -> None:
-        """Handle file download process."""
-        semester, is_practical = self.get_semester_and_type(answers)
-        course = answers["course"]
-        title = answers["file"]
+    async def _handle_file_download(self, message: Message, bot: Bot, answers: dict) -> None:
+        """Send the selected file's messages to the user."""
+        course, title = answers["course"], answers["file"]
 
         try:
-            courses = await self.get_courses(semester, is_practical, course)
+            courses = await self._get_matching_courses(answers, course)
             if not courses:
                 await message.answer("المقرر غير موجود.")
                 return
 
-            # Find the specific file
             file_ids = [file.archiveTelegramMessageId for file in courses[0].files if file.title == title]
-
             if not file_ids:
                 await message.answer("الملف غير موجود.")
                 return
 
-            # Send files
-            await bot.copy_messages(
-                message.chat.id,
-                ARCHIVE_CHANNEL,
-                file_ids,
-                remove_caption=True,
-            )
+            await bot.copy_messages(message.chat.id, ARCHIVE_CHANNEL, file_ids, remove_caption=True)
 
         except Exception:
             logger.exception("Error while fetching files (%s - %s)", course, title)
@@ -147,47 +130,35 @@ class BrowseScene(Scene, state="browse"):
 
     @on.message.enter()
     async def on_enter(self, message: Message, bot: Bot, state: FSMContext) -> None:
-        """Handle scene entry and step progression."""
+        """Show the prompt for the current step, or run the download once all steps are answered."""
         answers = await state.get_value("answers", {})
         step = len(answers)
 
-        # Handle file download (final step)
-        if step == len(self.STEP_HANDLERS):
-            await self._handle_file_download(message, bot, state, answers)
-            answers.popitem()
-            await state.update_data(answers=answers)
+        if step == len(self.STEPS):
+            await self._handle_file_download(message, bot, answers)
+            await self._go_back(state, answers)  # let the user pick another file from the same course
             return
 
-        # Validate step
-        if step >= len(self.STEP_HANDLERS):
-            logger.warning(f"Invalid step {step}, resetting")
+        if step > len(self.STEPS):
+            logger.warning("Invalid step %d, resetting", step)
             await state.clear()
             return await self.wizard.retake()
 
-        # Get current step handler
-        _, handler = self.STEP_HANDLERS[step]
-        prompt, options = await handler(answers)
+        prompt, options = await self._step_prompt(self.STEPS[step])(answers)
 
-        # Handle empty options
         if not options:
+            # This answer led to a dead end (e.g. no files for the chosen course) - undo it.
             if step > 0:
-                answers.popitem()
-                await state.update_data(answers=answers)
+                await self._go_back(state, answers)
             await message.answer(prompt)
-            await self.wizard.retake()
-            return
+            return await self.wizard.retake()
 
-        # Store options and show keyboard
         await state.update_data(preoptions=options)
-
-        await message.answer(
-            prompt,
-            reply_markup=self.build_keyboard(options, step).as_markup(resize_keyboard=True),
-        )
+        await message.answer(prompt, reply_markup=self.build_keyboard(options, step))
 
     @on.message(F.text.in_(NAVIGATION_ACTIONS))
-    async def navigation(self, message: Message, state: FSMContext) -> None:
-        """Handle navigatioN actions."""
+    async def on_navigation(self, message: Message, state: FSMContext) -> None:
+        """Handle back / restart / exit actions."""
         text = message.text
 
         if text == Action.exit:
@@ -198,38 +169,32 @@ class BrowseScene(Scene, state="browse"):
             self.get_courses.cache_clear()
             return await self.wizard.retake()
 
-        # BTN_BACK
+        # Action.back
         if answers := await state.get_value("answers", {}):
-            answers.popitem()
-            await state.update_data(answers=answers)
+            await self._go_back(state, answers)
             await self.wizard.retake()
 
     @on.message(F.text.as_("text"))
-    async def answer(self, message: Message, text: str, state: FSMContext) -> None:
-        """Process user's answer."""
+    async def on_answer(self, message: Message, text: str, state: FSMContext) -> None:
+        """Store the user's answer for the current step and move on."""
         answers = await state.get_value("answers", {})
         preoptions = await state.get_value("preoptions", [])
         step = len(answers)
 
-        # Validate input
-        if step >= len(self.STEP_HANDLERS) or text not in preoptions:
-            return await self.unknown_message(message)
+        if step >= len(self.STEPS) or text not in preoptions:
+            return await self.on_unknown_message(message)
 
-        # Store answer
-        step_key, _ = self.STEP_HANDLERS[step]
-        answers[step_key] = text
+        answers[self.STEPS[step]] = text
         await state.update_data(answers=answers)
-
-        # Move to next step
         await self.wizard.retake()
 
     @on.message()
-    async def unknown_message(self, message: Message) -> None:
-        """Handle unknown messages."""
+    async def on_unknown_message(self, message: Message) -> None:
+        """Reject free-text input that doesn't match any offered option."""
         await message.answer("الرجاء اختيار خيار من القائمة فقط.")
 
     @on.message.exit()
-    async def exit(self, message: Message, state: FSMContext) -> None:
+    async def on_exit(self, message: Message, state: FSMContext) -> None:
         """Clean up on scene exit."""
         await state.clear()
         self.get_courses.cache_clear()

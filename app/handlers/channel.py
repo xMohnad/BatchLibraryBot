@@ -36,10 +36,6 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
         if course := await Course.get_course(name, caption):
             copied_files: list[CourseFile] = []
             for file in files:
-                logger.info(
-                    "Copying course to archive. Original message_id: %d",
-                    file.originalTelegramMessageId,
-                )
                 try:
                     copied = await _copy_to_archive(bot, file, course.formatted_info(file.title))
                 except TelegramBadRequest:
@@ -52,8 +48,7 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
                 file.archiveTelegramMessageId = copied.message_id
                 copied_files.append(file)
 
-                logger.info("Course copied. New message_id: %d", copied.message_id)
-
+                logger.info("Archived new file: message_id %d -> %d.", message.message_id, copied.message_id)
             if copied_files:
                 await course.upsert_files(copied_files)
             logger.info("Parsed %d file(s) for course '%s'", len(copied_files), name)
@@ -89,44 +84,26 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
 
     course_name: str = match.group("course")
     if course := await Course.get_course(course_name, match.string):
-        files_by_id = {f.originalTelegramMessageId: f for f in course.files}
-        if message.message_id in files_by_id:
-            file = files_by_id[message.message_id]
-            if file.title == match.group("title"):
-                logger.info("Title is identical. No changes needed. Skipping update.")
+        if file := course.find_file_by_original_id(message.message_id):
+            new_title = match.group("title")
+            if file.title == new_title:
+                logger.info("Title unchanged for message_id %d, skipping.", file.originalTelegramMessageId)
                 return
 
-            file.title = match.group("title")
-            logger.info(
-                "Updated course with message_id %d (channel edit)",
-                file.archiveTelegramMessageId,
-            )
+            file.title = new_title
             await bot.edit_message_caption(
                 chat_id=ARCHIVE_CHANNEL,
                 message_id=file.archiveTelegramMessageId,
                 caption=course.formatted_info(file.title),
             )
-            logger.info(
-                "Updated archived course. message_id: %d",
-                file.originalTelegramMessageId,
-            )
             await course.save()
-            logger.info("Course document saved with updated file title.")
+            logger.info("Updated title for message_id %d.", file.originalTelegramMessageId)
         else:
-            logger.info(
-                f"File NOT found in course (Message ID: {message.message_id}). Treating as new file addition..."
-            )
             file = await CourseFile.from_message(message, match)
-            logger.info(
-                "Copying course to archive. Original message_id: %d",
-                file.originalTelegramMessageId,
-            )
-
             copied = await _copy_to_archive(bot, file, course.formatted_info(file.title))
-
             file.archiveTelegramMessageId = copied.message_id
             course.files.append(file)
             await course.save()
-            logger.info("Course copied. New message_id: %d", copied.message_id)
+            logger.info("Archived new file: message_id %d -> %d.", message.message_id, copied.message_id)
     else:
-        logger.warning(f"Course not found for name: {course_name}. Ignoring edit.")
+        logger.warning("Course not found for name: %s. Ignoring edit.", course_name)

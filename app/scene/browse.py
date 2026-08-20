@@ -7,7 +7,6 @@ from aiogram import Bot, F
 from aiogram.fsm.scene import Scene, on
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from async_lru import alru_cache
 
 from app.config import ARCHIVE_CHANNEL
 from app.database.models.course import Course, CourseType
@@ -42,16 +41,6 @@ class BrowseScene(Scene, state="browse"):
         answers.popitem()
         await state.update_data(answers=answers)
 
-    @classmethod
-    @alru_cache(ttl=60 * 60 * 2)
-    async def get_courses(cls, semester: int, is_practical: bool, course_name: str | None = None) -> list[Course]:
-        """Fetch courses with caching."""
-        query = {Course.semester: semester, Course.isPractical: is_practical}
-        if course_name:
-            query[Course.courseName] = course_name
-
-        return await Course.find(query).to_list()
-
     async def _get_matching_courses(self, answers: dict, course_name: str | None = None) -> list[Course]:
         """Resolve semester/type from `answers` and fetch matching courses."""
         semester, is_practical = (
@@ -61,7 +50,7 @@ class BrowseScene(Scene, state="browse"):
             ),
             answers["type"] == CourseType.PRACTICAL.value,
         )
-        return await self.get_courses(semester, is_practical, course_name)
+        return await Course.get_courses(semester, is_practical, course_name)
 
     def build_keyboard(self, options: list[str], step: int) -> ReplyKeyboardMarkup:
         """Build a reply keyboard with the given options plus navigation buttons."""
@@ -166,7 +155,6 @@ class BrowseScene(Scene, state="browse"):
 
         if text == Action.restart:
             await state.clear()
-            self.get_courses.cache_clear()
             return await self.wizard.retake()
 
         # Action.back
@@ -197,7 +185,6 @@ class BrowseScene(Scene, state="browse"):
     async def on_exit(self, message: Message, state: FSMContext) -> None:
         """Clean up on scene exit."""
         await state.clear()
-        self.get_courses.cache_clear()
 
         if message and message.text == Action.exit:
             await message.answer("تم الخروج.", reply_markup=ReplyKeyboardRemove())

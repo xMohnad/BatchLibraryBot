@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
+from beanie.operators import Pull
 
 from app.config import ARCHIVE_CHANNEL
 from app.database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
@@ -45,16 +46,16 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
     F.text.regexp(DELETE_COMMAND),
 )
 async def on_del_archive(message: Message, replied: Message) -> None:
-    """Handle edited media post."""
+    """Remove an archived file from its course when a delete command is sent in reply to it."""
     logger.info("Delete command (%s) received", message.text)
 
-    if result := await Course.find_one(
+    if course := await Course.find_one(
         Course.files.archiveTelegramMessageId == replied.message_id  # pyright: ignore[reportAttributeAccessIssue]
     ):
-        await result.update(  # pyright: ignore[reportGeneralTypeIssues]
-            {"$pull": {"files": {"archiveTelegramMessageId": replied.message_id}}}
-        )
-        logger.info("Deleted specific file with message_id %d from course", replied.message_id)
+        await course.update(Pull({"files": {"archiveTelegramMessageId": replied.message_id}}))
+        logger.info("Deleted file (message_id=%d) from course %r", replied.message_id, course.courseName)
+    else:
+        logger.warning("No course found containing file (message_id=%d)", replied.message_id)
 
     await message.delete()
 

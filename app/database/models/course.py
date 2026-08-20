@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, ClassVar, Self
 
 from async_lru import alru_cache
-from beanie import Document, Indexed, Replace, Save, before_event
+from beanie import Document, Indexed, Insert, Save, Update, after_event
 from pydantic import BaseModel, Field, model_validator
+from pymongo import IndexModel
 from rapidfuzz import fuzz, process
 
+from app.database.models.mixins import TimestampMixin
 from app.database.models.ordinal import Ordinal
 
 if TYPE_CHECKING:
@@ -54,50 +56,6 @@ class MessageType(StrEnum):
     AUDIO = "audio"
     DOCUMENT = "document"
     VIDEO = "video"
-
-
-class Gender(StrEnum):
-    """Enumeration of possible user genders."""
-
-    male = "male"
-    """Male gender."""
-
-    female = "female"
-    """Female gender."""
-
-    unknown = "unknown"
-    """Undefined or not specified gender."""
-
-
-class BaseDocument(Document):
-    """Base document containing common timestamp fields."""
-
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    """Date and time when the document was created (UTC)."""
-
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    """Date and time when the document was last updated (UTC)."""
-
-    @before_event(Save, Replace)
-    def update_timestamp(self):
-        """Automatically updates the 'updatedAt' field before saving or replacing the document."""
-        self.updatedAt = datetime.now(UTC)
-
-
-class Users(BaseDocument):
-    """Represents a system user."""
-
-    telegramId: Annotated[int, Indexed(unique=True)]
-    """Unique Telegram user identifier."""
-
-    fullName: str
-    """Full name of the user as provided by Telegram."""
-
-    gender: Gender = Gender.unknown
-    """User gender (male, female, or unknown)."""
-
-    isAdmin: bool = False
-    """Indicates whether the user has administrator privileges."""
 
 
 class CourseFile(BaseModel):
@@ -178,8 +136,7 @@ class CourseFile(BaseModel):
 
     @classmethod
     async def group_media_by_course(
-        cls,
-        media_events: list[Message],
+        cls, media_events: list[Message]
     ) -> tuple[dict[str, list[CourseFile]], dict[str, str]]:
         """Group a batch of media messages (e.g. an album/media group) by course.
 
@@ -207,7 +164,7 @@ class CourseFile(BaseModel):
         return course_files, course_captions
 
 
-class Course(BaseDocument):
+class Course(TimestampMixin, Document):
     """Represents a course linked to a subject and its files."""
 
     courseName: Annotated[str, Indexed()]
@@ -226,10 +183,10 @@ class Course(BaseDocument):
     """List of files associated with this course."""
 
     class Settings:
-        indexes: ClassVar[list[str]] = [
-            "files.originalTelegramMessageId",
+        indexes: ClassVar[list[str | IndexModel]] = [
             "files.archiveTelegramMessageId",
-            "files.fileId",
+            IndexModel([("semester", 1), ("courseName", 1)]),
+            IndexModel([("semester", 1), ("isPractical", 1), ("courseName", 1)]),
         ]
 
     @property
@@ -244,14 +201,13 @@ class Course(BaseDocument):
         )
 
     @classmethod
-    @alru_cache(ttl=60 * 60 * 2)
-    async def get_courses_name(cls, semester: int | None = None) -> list[str]:
+    @alru_cache
+    async def get_courses_name(cls, semester: int) -> list[str]:
         """Retrieve course names for a given academic semester, defaults to the current semester."""
-        semester = semester if semester is not None else Ordinal.current_semester()
         return await cls.distinct(Course.courseName, {"semester": semester})
 
     @classmethod
-    @alru_cache(ttl=60 * 60 * 2)
+    @alru_cache
     async def _get_course(cls, courseName: str, semester: int) -> Course | None:
         """Fetch a Course object by name and semester with caching."""
         courses = await cls.get_courses_name(semester)
@@ -262,6 +218,27 @@ class Course(BaseDocument):
     async def get_course(cls, courseName: str, caption: str) -> Course | None:
         """Fetch a course by name using semester extracted from a caption."""
         return await cls._get_course(courseName=courseName, semester=Ordinal.get_semester(caption))
+
+    @classmethod
+    @alru_cache
+    async def get_courses(cls, semester: int, is_practical: bool, course_name: str | None = None) -> list[Course]:
+        """Fetch courses with caching."""
+        query = {Course.semester: semester, Course.isPractical: is_practical}
+        if course_name:
+            query[Course.courseName] = course_name.strip()
+
+        return await Course.find(query).to_list()
+
+    @after_event(Insert, Save, Update)
+    def _invalidate_caches(self) -> None:
+        """Clear every course-related cache whenever a course is created or modified."""
+        Course.get_courses_name.cache_clear()
+        Course.get_courses.cache_clear()
+        Course._get_course.cache_clear()
+
+    def find_file_by_original_id(self, original_message_id: int) -> CourseFile | None:
+        """Find a file in this course by its original (source-channel) message id."""
+        return next((f for f in self.files if f.originalTelegramMessageId == original_message_id), None)
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""

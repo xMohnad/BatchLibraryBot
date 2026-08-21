@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import secrets
+import tempfile
 import urllib.parse
+from pathlib import Path
 
 from environs import Env
 
 env = Env()
 env.read_env()
 
+
+TMP = Path(tempfile.gettempdir()) / "Bot"
+"""Temporary directory."""
+
+TMP.mkdir(parents=True, exist_ok=True)
 
 TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
 

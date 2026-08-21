@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from pathlib import Path  # noqa: TC003
 
 from pydantic import BaseModel, field_validator
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class File(BaseModel):

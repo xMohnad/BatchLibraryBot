@@ -7,11 +7,11 @@ from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.database.models.course import Course
-from app.database.models.ordinal import Ordinal
+from database.models.course import Course
+from database.models.ordinal import Ordinal
 
 if TYPE_CHECKING:
-    from app.database.models import CourseFile
+    from database.models.course import CourseFile
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 

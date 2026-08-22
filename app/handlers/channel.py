@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
-from app.config import ARCHIVE_CHANNEL, CHANNEL_ID
-from app.database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 from app.filters import IdFilter
+from config import ARCHIVE_CHANNEL, CHANNEL_ID
+from database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 
 if TYPE_CHECKING:
     import re

@@ -5,7 +5,7 @@ import html
 import logging
 from typing import TYPE_CHECKING
 
-from app.config import LOG_CHANNEL_ID
+from config import LOG_CHANNEL_ID
 
 if TYPE_CHECKING:
     from aiogram import Bot

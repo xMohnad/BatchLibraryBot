@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from enum import Enum
 
-from app.config import SEMESTER_START_YEAR
+from config import SEMESTER_START_YEAR
 
 
 class Ordinal(int, Enum):

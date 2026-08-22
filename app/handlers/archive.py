@@ -8,9 +8,9 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from beanie.operators import Pull
 
-from app.config import ARCHIVE_CHANNEL
-from app.database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 from app.filters import IdFilter
+from config import ARCHIVE_CHANNEL
+from database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 
 if TYPE_CHECKING:
     from aiogram.types import Message

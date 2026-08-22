@@ -9,8 +9,8 @@ from fastapi.responses import HTMLResponse
 
 import api
 from app.bot import bot, dp, init_bot
-from app.config import WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
-from app.database import init_database
+from config import WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
+from database import init_database
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
         logger.info("Webhook set and bot ready")
 
     yield
-    from app.database import client
+    from database import client
 
     await client.close()
 

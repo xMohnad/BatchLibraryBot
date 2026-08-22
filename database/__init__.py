@@ -3,8 +3,8 @@ import asyncio
 from beanie import init_beanie
 from pymongo import AsyncMongoClient
 
-from app.config import MONGO_NAME, MONGO_URL
-from app.database.models import Course
+from config import MONGO_NAME, MONGO_URL
+from database.models.course import Course
 
 client = AsyncMongoClient(MONGO_URL)
 database = client[MONGO_NAME]

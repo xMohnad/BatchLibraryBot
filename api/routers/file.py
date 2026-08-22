@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
 from app.bot import bot
-from app.config import TMP
-from app.database.models.course import Course, CourseFile
+from config import TMP
+from database.models.course import Course, CourseFile
 
 logger = logging.getLogger(__name__)
 

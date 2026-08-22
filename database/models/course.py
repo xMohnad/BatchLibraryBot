@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
 from rapidfuzz import fuzz, process
 
-from app.database.models.mixins import TimestampMixin
-from app.database.models.ordinal import Ordinal
+from database.models.mixins import TimestampMixin
+from database.models.ordinal import Ordinal
 
 if TYPE_CHECKING:
     from aiogram.types import Message

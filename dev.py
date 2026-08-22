@@ -29,7 +29,7 @@ if not args.bot and not args.api:
 
 
 async def run() -> None:
-    from app.database import init_database
+    from database import init_database
 
     await init_database()
 

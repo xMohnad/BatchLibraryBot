@@ -47,7 +47,11 @@ class TelegramLogHandler(logging.Handler):
         texts = []
         for idx, chunk in enumerate(raw_chunks, start=1):
             part = f" <code>{idx}/{total}</code>" if total > 1 else ""
-            header = f"<b>{record.levelname}</b>{part} · <code>{html.escape(record.name)}</code> · <code>{record.filename}:{record.lineno}</code>\n\n"
+            header = (
+                f"<b>{record.levelname}</b>{part} · "
+                f"<code>{html.escape(record.name)}</code> · "
+                f"<code>{record.filename}:{record.lineno}</code>\n\n"
+            )
 
             code = f'<pre><code class="language-python">{html.escape(chunk)}</code></pre>'
             body = f"<blockquote expandable>{code}</blockquote>"

@@ -46,7 +46,7 @@ class MediaMiddleware(BaseMiddleware):
 middlewares = [MediaMiddleware]
 
 
-async def setup_middlewares(dp: Dispatcher) -> None:
+def setup_middlewares(dp: Dispatcher) -> None:
     for middleware in middlewares:
         dp.channel_post.middleware(middleware())
         dp.message.middleware(middleware())

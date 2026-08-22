@@ -13,5 +13,5 @@ if TYPE_CHECKING:
 routers = [channel, bot, archive, commands]
 
 
-async def setup_routes(dp: Dispatcher):
+def setup_routes(dp: Dispatcher):
     dp.include_routers(*routers)

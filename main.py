@@ -8,8 +8,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 import api
-from app.bot import bot, dp, init_bot
-from config import WEBHOOK_EP, WEBHOOK_SECRET, WEBHOOK_URL
+from app.bot import bot, dp
+from config import WEBHOOK_EP, WEBHOOK_SECRET
 from database import init_database
 
 logger = logging.getLogger(__name__)
@@ -18,12 +18,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_database()
-
-    if WEBHOOK_URL:
-        await init_bot()
-        await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
-        logger.info("Webhook set and bot ready")
-
     yield
     from database import client
 

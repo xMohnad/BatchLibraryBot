@@ -6,10 +6,10 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
 from async_lru import alru_cache
-from beanie import Document, Indexed, Insert, Save, Update, after_event
+from beanie import Document, Insert, Save, Update, after_event
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
 from rapidfuzz import fuzz, process
@@ -167,7 +167,7 @@ class CourseFile(BaseModel):
 class Course(TimestampMixin, Document):
     """Represents a course linked to a subject and its files."""
 
-    courseName: Annotated[str, Indexed()]
+    courseName: str
     """Name of the course or subject."""
 
     tutorName: str
@@ -239,6 +239,10 @@ class Course(TimestampMixin, Document):
     def find_file_by_original_id(self, original_message_id: int) -> CourseFile | None:
         """Find a file in this course by its original (source-channel) message id."""
         return next((f for f in self.files if f.originalTelegramMessageId == original_message_id), None)
+
+    def find_file_by_archive_id(self, archive_message_id: int) -> CourseFile | None:
+        """Find a file in this course by its archive (source-channel) message id."""
+        return next((f for f in self.files if f.archiveTelegramMessageId == archive_message_id), None)
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""

@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
+DEFAULT_SORT = "-createdAt"
+
 
 class CourseSummary(BaseModel):
     id: str
@@ -87,12 +89,18 @@ async def list_courses(
     page: Annotated[int, Query(ge=1)] = 1,
     pageSize: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> CourseListResponse:
-    """List courses for a semester, defaulting to the current level/term."""
-    semester = Ordinal.to_semester(
-        level or Ordinal.current_level(),
-        term or Ordinal.current_term(),
-    )
-    query: dict = {"semester": semester}
+    """List courses, optionally filtered by level/term/isPractical/search.
+
+    If only level or term is provided, the other defaults to the current value.
+    """
+    query: dict[str, object] = {}
+
+    if level is not None or term is not None:
+        semester = Ordinal.to_semester(
+            level or Ordinal.current_level(),
+            term or Ordinal.current_term(),
+        )
+        query["semester"] = semester
 
     if isPractical is not None:
         query["isPractical"] = isPractical
@@ -106,10 +114,17 @@ async def list_courses(
 
     find_query = Course.find(query)
     total = await find_query.count()
-    courses = await find_query.sort("courseName").skip((page - 1) * pageSize).limit(pageSize).to_list()
+    courses = await find_query.sort(DEFAULT_SORT).skip((page - 1) * pageSize).limit(pageSize).to_list()
 
     items = [CourseSummary.from_course(course) for course in courses]
     return CourseListResponse(items=items, total=total, page=page, pageSize=pageSize)
+
+
+@router.get("/current", response_model=list[CourseSummary])
+async def current_courses() -> list[CourseSummary]:
+    """List all courses for the current semester."""
+    courses = await Course.find(Course.semester == Ordinal.current_semester()).sort(DEFAULT_SORT).to_list()
+    return [CourseSummary.from_course(course) for course in courses]
 
 
 @router.get("/{course_id}", response_model=CourseDetail)

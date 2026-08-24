@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING, ClassVar
 
 from aiogram import Bot, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.scene import Scene, on
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
@@ -99,23 +100,32 @@ class BrowseScene(Scene, state="browse"):
     async def _handle_file_download(self, message: Message, bot: Bot, answers: dict) -> None:
         """Send the selected file's messages to the user."""
         course, title = answers["course"], answers["file"]
+        courses = await self._get_matching_courses(answers, course)
+        if not courses:
+            await message.answer("المقرر غير موجود.")
+            return
+
+        files = [file for file in courses[0].files if file.title == title]
+        if not files:
+            await message.answer("الملف غير موجود.")
+            return
 
         try:
-            courses = await self._get_matching_courses(answers, course)
-            if not courses:
-                await message.answer("المقرر غير موجود.")
-                return
-
-            file_ids = [file.archiveTelegramMessageId for file in courses[0].files if file.title == title]
-            if not file_ids:
-                await message.answer("الملف غير موجود.")
-                return
-
-            await bot.copy_messages(message.chat.id, ARCHIVE_CHANNEL, file_ids, remove_caption=True)
-
-        except Exception:
-            logger.exception("Error while fetching files (%s - %s)", course, title)
+            message_ids = [file.archiveTelegramMessageId for file in files]
+            await bot.copy_messages(message.chat.id, ARCHIVE_CHANNEL, message_ids, remove_caption=True)
+        except TelegramBadRequest:
+            logger.exception("Failed to copy files | course=%s | title=%s", course, title)
             await message.answer("حدث خطأ أثناء جلب الملفات. الرجاء المحاولة لاحقاً.")
+            lines = ["Details:"] + [
+                (
+                    f"  [{i}] "
+                    f"archiveId={f.archiveTelegramMessageId} | "
+                    f"fileId={f.fileId} | "
+                    f"src=({f.fromChatId}:{f.originalTelegramMessageId}) | "
+                )
+                for i, f in enumerate(files, 1)
+            ]
+            logger.error("\n".join(lines))
 
     @on.message.enter()
     async def on_enter(self, message: Message, bot: Bot, state: FSMContext) -> None:

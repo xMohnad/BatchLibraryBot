@@ -48,7 +48,7 @@ class CourseListResponse(BaseModel):
 
 
 class CourseFileSummary(BaseModel):
-    id: int
+    id: str
     title: str
     originalName: str
     mimeType: str
@@ -58,7 +58,7 @@ class CourseFileSummary(BaseModel):
     @classmethod
     def from_course_file(cls, file: CourseFile) -> CourseFileSummary:
         return cls(
-            id=file.archiveTelegramMessageId,
+            id=str(file.id),
             title=file.title,
             originalName=file.originalName,
             mimeType=file.mimeType,

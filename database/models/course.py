@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Self
 
 from async_lru import alru_cache
-from beanie import Document, Insert, Save, Update, after_event
+from beanie import Document, Insert, PydanticObjectId, Save, Update, after_event
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
 from rapidfuzz import fuzz, process
@@ -60,6 +60,9 @@ class MessageType(StrEnum):
 
 class CourseFile(BaseModel):
     """Represents a file associated with a course."""
+
+    id: PydanticObjectId = Field(default_factory=PydanticObjectId)
+    """Unique identifier for this file."""
 
     title: str
     """Human-readable title of the file."""
@@ -183,8 +186,9 @@ class Course(TimestampMixin, Document):
     """List of files associated with this course."""
 
     class Settings:
-        indexes: ClassVar[list[str | IndexModel]] = [
-            "files.archiveTelegramMessageId",
+        indexes: ClassVar[list[IndexModel]] = [
+            IndexModel([("files.id", 1)]),
+            IndexModel([("files.archiveTelegramMessageId", 1)]),
             IndexModel([("semester", 1), ("courseName", 1)]),
             IndexModel([("semester", 1), ("isPractical", 1), ("courseName", 1)]),
         ]
@@ -240,9 +244,9 @@ class Course(TimestampMixin, Document):
         """Find a file in this course by its original (source-channel) message id."""
         return next((f for f in self.files if f.originalTelegramMessageId == original_message_id), None)
 
-    def find_file_by_archive_id(self, archive_message_id: int) -> CourseFile | None:
-        """Find a file in this course by its archive (source-channel) message id."""
-        return next((f for f in self.files if f.archiveTelegramMessageId == archive_message_id), None)
+    def find_file_by_id(self, file_id: PydanticObjectId) -> CourseFile | None:
+        """Find a file in this course by its id."""
+        return next((f for f in self.files if f.id == file_id), None)
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""

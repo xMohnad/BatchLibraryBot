@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections import defaultdict
 
+from beanie import PydanticObjectId  # noqa: TC002
 from beanie.operators import ElemMatch
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
@@ -20,20 +21,20 @@ MAX_SIZE = 20 * 1024 * 1024  # 20 MB - the standard Bot API's download limit
 ARCHIVE_DIR = TMP / "files"
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
-_download_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+_download_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
-async def _find_file(message_id: int) -> CourseFile:
-    """Find a course file by its archive message id, or raise 404."""
-    course = await Course.find_one(ElemMatch(Course.files, {"archiveTelegramMessageId": message_id}))
-    if course and (file := course.find_file_by_archive_id(message_id)):
+async def _find_file(file_id: PydanticObjectId) -> CourseFile:
+    """Find a course file by its id, or raise 404."""
+    course = await Course.find_one(ElemMatch(Course.files, {"id": file_id}))
+    if course and (file := course.find_file_by_id(file_id)):
         return file
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file not found.")
 
 
 @router.get("/{file_id}/{file_name}")
-async def download_file(file_id: int, file_name: str) -> FileResponse:
+async def download_file(file_id: PydanticObjectId, file_name: str) -> FileResponse:
     """Stream a file from Telegram's archive to the client.
 
     `file_name` in the path is purely cosmetic (nice, shareable URLs and a
@@ -42,7 +43,7 @@ async def download_file(file_id: int, file_name: str) -> FileResponse:
     resolved strictly from `file_id` against the database.
     """
     file = await _find_file(file_id)
-    path = ARCHIVE_DIR / f"{file.archiveTelegramMessageId}.{file.extension}"
+    path = ARCHIVE_DIR / f"{file.id}.{file.extension}"
 
     if not path.is_file():
         if file.sizeBytes > MAX_SIZE:
@@ -51,13 +52,13 @@ async def download_file(file_id: int, file_name: str) -> FileResponse:
                 detail="File is too large (max 20MB).",
             )
 
-        async with _download_locks[file_id]:
+        async with _download_locks[str(file_id)]:
             if not path.is_file():  # re-check: another request may have finished downloading while we waited
                 tmp_path = path.with_suffix(f"{path.suffix}.part")
                 try:
                     await bot.download(file.fileId, tmp_path)
                 except Exception as e:
-                    logger.exception("Failed to download file from Telegram (message_id=%d)", file_id)
+                    logger.exception("Failed to download file from Telegram (id=%s)", str(file_id))
                     tmp_path.unlink(missing_ok=True)
                     raise HTTPException(
                         status_code=status.HTTP_502_BAD_GATEWAY,

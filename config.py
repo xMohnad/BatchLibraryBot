@@ -18,10 +18,11 @@ TMP = Path(tempfile.gettempdir()) / "Bot"
 
 TMP.mkdir(parents=True, exist_ok=True)
 
-TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
+CLOUDINARY_URL = env.str("CLOUDINARY_URL", None)
 
 SEMESTER_START_YEAR = env.int("SEMESTER_START_YEAR", 2025)
 
+TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = env.int("CHANNEL_ID", default=0)
 ARCHIVE_CHANNEL = env.int("ARCHIVE_CHANNEL", default=0)
 LOG_CHANNEL_ID = env.int("LOG_CHANNEL_ID", default=None)

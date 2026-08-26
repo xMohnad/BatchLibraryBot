@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import cloudinary
 import cloudinary.uploader
 
-from config import TMP
+from config import CLOUDINARY_URL, TMP
 
 if TYPE_CHECKING:
     from aiogram import Bot
@@ -59,6 +59,9 @@ async def _upload_file(bot: Bot, folder: str, file: CourseFile) -> bool:
 
 async def ensure_files_uploaded(course: Course) -> None:
     """Ensure every file in `course` has been uploaded to Cloudinary."""
+    if CLOUDINARY_URL is None:
+        logger.warning("Missing CLOUDINARY_URL; uploads to Cloudinary are disabled.")
+
     if not any(f.url is None for f in course.files):
         return
 

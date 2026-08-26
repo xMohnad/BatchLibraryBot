@@ -8,12 +8,13 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from beanie.operators import Pull
 
-from app.filters import IdFilter
-from app.uploads import ensure_files_uploaded
+from app.core.filters import IdFilter
+from app.services.archiving import apply_caption_edit, ingest_media_batch
 from config import ARCHIVE_CHANNEL
-from database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
+from database.models.course import CAPTION_PATTERN, Course, MessageType
 
 if TYPE_CHECKING:
+    from aiogram import Bot
     from aiogram.types import Message
 
 router = Router(name=__name__)
@@ -28,17 +29,9 @@ EDIT_COMMAND = re.compile(r"^/?edit$", re.IGNORECASE)
 
 
 @router.channel_post(F.content_type.in_(MessageType))
-async def handle_archive_media(message: Message, media_events: list[Message]) -> None:
+async def handle_archive_media(message: Message, bot: Bot, media_events: list[Message]) -> None:
     """Handle new media posts with caption."""
-    logger.info("Handling new media post")
-
-    course_files, course_captions = await CourseFile.group_media_by_course(media_events)
-
-    for name, files in course_files.items():
-        caption = course_captions[name]
-        if course := await Course.get_course(name, caption):
-            await course.upsert_files(files)
-            await ensure_files_uploaded(course)
+    await ingest_media_batch(bot, media_events, copy_to_archive_channel=False)
 
 
 @router.channel_post(
@@ -76,28 +69,15 @@ async def on_edit_archive_reply(
     """Handle edit command sent as a reply."""
     logger.info("Edit command (%s) received", message.text)
 
-    course_name: str = match.group("course")
-    if course := await Course.get_course(course_name, match.string):
-        file = await CourseFile.from_message(replied, match)
+    if result := await apply_caption_edit(match, replied):
+        course, file = result
         try:
-            await course.upsert_files([file])
-            await ensure_files_uploaded(course)
             await replied.edit_caption(caption=course.formatted_info(file.title))
-            logger.info(
-                "Updated course with message_id %d (reply edit)",
-                file.archiveTelegramMessageId,
-            )
         except TelegramBadRequest as e:
             if "message is not modified" in e.message.lower():
-                logger.warning(
-                    "Update skipped for Message ID %d: Content is identical.",
-                    file.archiveTelegramMessageId,
-                )
+                logger.info("Skip update: message %d unchanged", file.archiveTelegramMessageId)
             else:
-                logger.exception(
-                    "Telegram API error while updating Message ID %d",
-                    file.archiveTelegramMessageId,
-                )
+                logger.exception("Failed to update Telegram Message ID %d", file.archiveTelegramMessageId)
 
     await message.delete()
 
@@ -109,13 +89,4 @@ async def on_edit_archive_reply(
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
     """Handle direct media edit in channel."""
     logger.info("Direct edit received")
-
-    course_name: str = match.group("course")
-    if course := await Course.get_course(course_name, match.string):
-        file = await CourseFile.from_message(message, match)
-        await course.upsert_files([file])
-        await ensure_files_uploaded(course)
-        logger.info(
-            "Updated course with message_id %d (direct edit)",
-            file.archiveTelegramMessageId,
-        )
+    await apply_caption_edit(match, message)

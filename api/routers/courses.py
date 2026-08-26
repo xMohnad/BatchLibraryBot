@@ -7,7 +7,7 @@ from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.uploads import ensure_files_uploaded
+from app.services.uploads import ensure_files_uploaded
 from database.models.course import Course
 from database.models.ordinal import Ordinal
 

@@ -5,9 +5,11 @@ import tempfile
 import urllib.parse
 from pathlib import Path
 
-from environs import Env
+from dotenv import load_dotenv
+from environs import env
 
-env = Env()
+load_dotenv()
+
 env.read_env()
 
 

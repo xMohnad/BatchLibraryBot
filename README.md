@@ -24,6 +24,9 @@ WEBHOOK_SECRET=random_secret_string
 
 # Academic calendar
 SEMESTER_START_YEAR=2025           # Year treated as level 1 / term 1
+
+# Cloudinary (optional, for api)
+CLOUDINARY_URL=
 ```
 
 # Bot Setup

@@ -8,6 +8,7 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
 from app.filters import IdFilter
+from app.uploads import ensure_files_uploaded
 from config import ARCHIVE_CHANNEL, CHANNEL_ID
 from database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 
@@ -51,6 +52,7 @@ async def handle_media(message: Message, bot: Bot, media_events: list[Message]) 
                 logger.info("Archived new file: message_id %d -> %d.", message.message_id, copied.message_id)
             if copied_files:
                 await course.upsert_files(copied_files)
+                await ensure_files_uploaded(course)
             logger.info("Parsed %d file(s) for course '%s'", len(copied_files), name)
 
 

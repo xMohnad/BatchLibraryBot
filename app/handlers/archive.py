@@ -9,6 +9,7 @@ from aiogram.exceptions import TelegramBadRequest
 from beanie.operators import Pull
 
 from app.filters import IdFilter
+from app.uploads import ensure_files_uploaded
 from config import ARCHIVE_CHANNEL
 from database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 
@@ -37,6 +38,7 @@ async def handle_archive_media(message: Message, media_events: list[Message]) ->
         caption = course_captions[name]
         if course := await Course.get_course(name, caption):
             await course.upsert_files(files)
+            await ensure_files_uploaded(course)
 
 
 @router.channel_post(
@@ -79,6 +81,7 @@ async def on_edit_archive_reply(
         file = await CourseFile.from_message(replied, match)
         try:
             await course.upsert_files([file])
+            await ensure_files_uploaded(course)
             await replied.edit_caption(caption=course.formatted_info(file.title))
             logger.info(
                 "Updated course with message_id %d (reply edit)",
@@ -111,6 +114,7 @@ async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None
     if course := await Course.get_course(course_name, match.string):
         file = await CourseFile.from_message(message, match)
         await course.upsert_files([file])
+        await ensure_files_uploaded(course)
         logger.info(
             "Updated course with message_id %d (direct edit)",
             file.archiveTelegramMessageId,

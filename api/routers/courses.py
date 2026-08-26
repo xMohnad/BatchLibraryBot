@@ -7,6 +7,7 @@ from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from app.uploads import ensure_files_uploaded
 from database.models.course import Course
 from database.models.ordinal import Ordinal
 
@@ -48,22 +49,24 @@ class CourseListResponse(BaseModel):
 
 
 class CourseFileSummary(BaseModel):
-    id: str
+    id: int
     title: str
     originalName: str
     mimeType: str
     extension: str
     sizeBytes: int
+    url: str | None
 
     @classmethod
     def from_course_file(cls, file: CourseFile) -> CourseFileSummary:
         return cls(
-            id=str(file.id),
+            id=file.archiveTelegramMessageId,
             title=file.title,
             originalName=file.originalName,
             mimeType=file.mimeType,
             extension=file.extension,
             sizeBytes=file.sizeBytes,
+            url=file.url,
         )
 
 
@@ -135,4 +138,5 @@ async def get_course(course_id: PydanticObjectId) -> CourseDetail:
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found.")
 
+    await ensure_files_uploaded(course)
     return CourseDetail.from_course(course)

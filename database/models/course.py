@@ -97,6 +97,15 @@ class CourseFile(BaseModel):
     sizeBytes: int
     """File size in bytes."""
 
+    url: str | None = None
+    """Direct Cloudinary URL to the file, once uploaded."""
+
+    publicId: str | None = None
+    """Cloudinary public ID, used to manage (e.g. delete) the uploaded asset."""
+
+    resourceType: str | None = None
+    """Cloudinary resource type the file was stored under (image/video/raw)."""
+
     createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Date and time when the document was created (UTC)."""
 
@@ -187,7 +196,6 @@ class Course(TimestampMixin, Document):
 
     class Settings:
         indexes: ClassVar[list[IndexModel]] = [
-            IndexModel([("files.id", 1)]),
             IndexModel([("files.archiveTelegramMessageId", 1)]),
             IndexModel([("semester", 1), ("courseName", 1)]),
             IndexModel([("semester", 1), ("isPractical", 1), ("courseName", 1)]),
@@ -243,10 +251,6 @@ class Course(TimestampMixin, Document):
     def find_file_by_original_id(self, original_message_id: int) -> CourseFile | None:
         """Find a file in this course by its original (source-channel) message id."""
         return next((f for f in self.files if f.originalTelegramMessageId == original_message_id), None)
-
-    def find_file_by_id(self, file_id: PydanticObjectId) -> CourseFile | None:
-        """Find a file in this course by its id."""
-        return next((f for f in self.files if f.id == file_id), None)
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""

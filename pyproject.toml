@@ -12,6 +12,7 @@ dependencies = [
   "aiogram>=3.22.0",
   "async-lru>=2.0.5",
   "beanie>=2.0.1",
+  "cloudinary>=1.44.1",
   "environs>=14.5.0",
   "fastapi>=0.123.9",
   "olefile>=0.47",

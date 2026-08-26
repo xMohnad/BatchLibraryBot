@@ -1,9 +1,8 @@
 from fastapi import APIRouter
 
-from .routers import courses, file
+from .routers import courses
 
 router = APIRouter(prefix="/api")
 
 
 router.include_router(courses.router)
-router.include_router(file.router)

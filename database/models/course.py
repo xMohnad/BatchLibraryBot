@@ -12,8 +12,8 @@ from async_lru import alru_cache
 from beanie import Document, Insert, PydanticObjectId, Save, Update, after_event
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
-from rapidfuzz import fuzz, process
 
+from core.text_matching import resolve_best_match
 from database.models.mixins import TimestampMixin
 from database.models.ordinal import Ordinal
 
@@ -23,26 +23,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CAPTION_PATTERN = re.compile(r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)")
-
-
-def _resolve_course_similarity(course: str, existing: list[str], threshold: int = 90) -> str:
-    """Match `course` against `existing` course names, tolerating minor typos."""
-    logger.info(f"Checking similarity for: '{course}'")
-
-    if course in existing:
-        logger.info(f"Exact match found in database for: '{course}'")
-        return course
-
-    match = process.extractOne(course, existing, scorer=fuzz.token_sort_ratio)
-
-    logger.info(f"Best match: {match}")
-
-    if match and match[1] >= threshold:
-        logger.info(f"Accepted → returning: '{match[0]}' (score={match[1]})")
-        return match[0]
-
-    logger.info(f"Rejected → returning original: '{course}'")
-    return course
 
 
 class CourseType(StrEnum):
@@ -223,8 +203,9 @@ class Course(TimestampMixin, Document):
     async def _get_course(cls, courseName: str, semester: int) -> Course | None:
         """Fetch a Course object by name and semester with caching."""
         courses = await cls.get_courses_name(semester)
-        course = _resolve_course_similarity(courseName, courses)
-        return await cls.find_one(cls.courseName == course, cls.semester == semester)
+        if course := resolve_best_match(courseName, courses):
+            logger.info("Match: '%s' -> '%s' (semester=%s)", courseName, course, semester)
+            return await cls.find_one(cls.courseName == course, cls.semester == semester)
 
     @classmethod
     async def get_course(cls, courseName: str, caption: str) -> Course | None:

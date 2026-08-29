@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Annotated
 
 from beanie import PydanticObjectId  # noqa: TC002
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 
 from api.deps import require_admin, require_course_permission
 from app.services.uploads import ensure_files_uploaded
+from core.text_matching import fuzzy_score
 from database.models.course import Course
 from database.models.ordinal import Ordinal
 from database.models.user import User  # noqa: TC001
@@ -130,16 +130,23 @@ async def list_courses(
     if isPractical is not None:
         query["isPractical"] = isPractical
 
-    if search:
-        pattern = {"$regex": re.escape(search), "$options": "i"}
-        query["$or"] = [
-            {"courseName": pattern},
-            {"tutorName": pattern},
-        ]
-
     find_query = Course.find(query)
-    total = await find_query.count()
-    courses = await find_query.sort(DEFAULT_SORT).skip((page - 1) * pageSize).limit(pageSize).to_list()
+
+    if search:
+        candidates = await find_query.to_list()
+        scored = [
+            (score, course)
+            for course in candidates
+            if (score := fuzzy_score(search, course.courseName, course.tutorName)) is not None
+        ]
+        scored.sort(key=lambda item: item[0], reverse=True)
+
+        total = len(scored)
+        start = (page - 1) * pageSize
+        courses = [course for _, course in scored[start : start + pageSize]]
+    else:
+        total = await find_query.count()
+        courses = await find_query.sort(DEFAULT_SORT).skip((page - 1) * pageSize).limit(pageSize).to_list()
 
     items = [CourseSummary.from_course(course) for course in courses]
     return CourseListResponse(items=items, total=total, page=page, pageSize=pageSize)

@@ -7,7 +7,7 @@ from aiogram.types import Update
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-import api
+from api import api
 from app.bot import bot, dp
 from config import WEBHOOK_EP, WEBHOOK_SECRET
 from database import init_database

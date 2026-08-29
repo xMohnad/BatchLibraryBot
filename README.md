@@ -27,6 +27,19 @@ SEMESTER_START_YEAR=2025           # Year treated as level 1 / term 1
 
 # Cloudinary (optional, for api)
 CLOUDINARY_URL=
+
+# Auth
+JWT_SECRET_KEY=                    # long random value, e.g. `openssl rand -hex 32`
+ACCESS_TOKEN_TTL_MINUTES=15
+REFRESH_TOKEN_TTL_DAYS=30
+REGISTRATION_PENDING_TTL_MINUTES=20
+REGISTRATION_CODE_TTL_MINUTES=10
+REGISTRATION_MAX_CODE_ATTEMPTS=5
+REGISTRATION_MAX_CODE_SENDS=5
+REGISTRATION_CODE_RESEND_COOLDOWN_SECONDS=60
+LOGIN_MAX_FAILED_ATTEMPTS=5
+LOGIN_LOCKOUT_MINUTES=15
+COOKIE_SECURE=true                 # set to false only for local http:// development
 ```
 
 # Bot Setup

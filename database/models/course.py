@@ -252,6 +252,10 @@ class Course(TimestampMixin, Document):
         """Find a file in this course by its original (source-channel) message id."""
         return next((f for f in self.files if f.originalTelegramMessageId == original_message_id), None)
 
+    def find_file_by_archive_id(self, archive_message_id: int) -> CourseFile | None:
+        """Find a file in this course by its archive message id."""
+        return next((f for f in self.files if f.archiveTelegramMessageId == archive_message_id), None)
+
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""
         files_by_id = {f.archiveTelegramMessageId: f for f in self.files}

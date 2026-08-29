@@ -5,8 +5,11 @@ from pymongo import AsyncMongoClient
 
 from config import MONGO_NAME, MONGO_URL
 from database.models.course import Course
+from database.models.registration import PendingRegistration
+from database.models.session import Session
+from database.models.user import User
 
-client = AsyncMongoClient(MONGO_URL)
+client = AsyncMongoClient(MONGO_URL, tz_aware=True)
 database = client[MONGO_NAME]
 
 
@@ -22,5 +25,8 @@ async def init_database() -> None:
         if _db_initialized:
             return
 
-        await init_beanie(database=database, document_models=[Course])
+        await init_beanie(
+            database=database,
+            document_models=[Course, User, PendingRegistration, Session],
+        )
         _db_initialized = True

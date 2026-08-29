@@ -8,13 +8,13 @@ from beanie import Document
 from pydantic import Field
 from pymongo import IndexModel
 
-from api.core.security import generate_registration_code, hash_code
 from config import (
     CHANNEL_ID,
     REGISTRATION_CODE_RESEND_COOLDOWN_SECONDS,
     REGISTRATION_CODE_TTL_MINUTES,
     REGISTRATION_MAX_CODE_SENDS,
 )
+from core.security import generate_registration_code, hash_code
 from database.models.user import Gender, User
 
 if TYPE_CHECKING:

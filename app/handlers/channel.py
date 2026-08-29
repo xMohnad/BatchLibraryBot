@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 
 from aiogram import F, Router
 
-from app.core.filters import IdFilter
 from app.services.archiving import copy_to_archive, ingest_media_batch
 from config import ARCHIVE_CHANNEL, CHANNEL_ID
+from core.filters import IdFilter
 from database.models.course import CAPTION_PATTERN, Course, CourseFile, MessageType
 
 if TYPE_CHECKING:

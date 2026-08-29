@@ -5,10 +5,10 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, ErrorEvent
 
-from app.core.log import setup_logging
-from app.core.middlewares import setup_middlewares
 from app.handlers import setup_routes
+from app.services.middlewares import setup_middlewares
 from config import TELEGRAM_BOT_TOKEN
+from core.log import setup_logging
 
 logger = logging.getLogger(__name__)
 

@@ -9,15 +9,6 @@ import jwt
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
-from api.core.rate_limit import login_limiter, register_limiter, verify_limiter
-from api.core.security import (
-    generate_refresh_token,
-    hash_password,
-    hash_refresh_token,
-    validate_password_strength,
-    verify_code,
-    verify_password,
-)
 from api.deps import get_current_user
 from config import (
     ACCESS_TOKEN_TTL_MINUTES,
@@ -29,6 +20,15 @@ from config import (
     REFRESH_TOKEN_TTL_DAYS,
     REGISTRATION_MAX_CODE_ATTEMPTS,
     REGISTRATION_PENDING_TTL_MINUTES,
+)
+from core.rate_limit import login_limiter, register_limiter, verify_limiter
+from core.security import (
+    generate_refresh_token,
+    hash_password,
+    hash_refresh_token,
+    validate_password_strength,
+    verify_code,
+    verify_password,
 )
 from database.models.registration import PendingRegistration
 from database.models.session import Session

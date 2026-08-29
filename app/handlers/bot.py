@@ -7,9 +7,9 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import ReplyKeyboardRemove
 
-from app.core.filters import RegistrationDeepLink
 from app.scene import SceneRegistry, register_scene
 from config import REGISTRATION_CODE_TTL_MINUTES
+from core.filters import RegistrationDeepLink
 from database.models.registration import PendingRegistration
 
 if TYPE_CHECKING:

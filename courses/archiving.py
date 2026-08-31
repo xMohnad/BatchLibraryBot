@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
-from app.services.uploads import ensure_files_uploaded
 from config import ARCHIVE_CHANNEL
-from database.models.course import Course, CourseFile
+from courses.models import Course, CourseFile
+from courses.uploads import ensure_files_uploaded
 
 if TYPE_CHECKING:
     import re

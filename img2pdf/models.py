@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, field_validator
@@ -22,15 +21,3 @@ class File(BaseModel):
         return filename
 
     model_config = {"validate_assignment": True}
-
-
-class Action(StrEnum):
-    clear = "clear"
-    convert = "convert"
-
-    filename = "filename"
-    caption = "caption"
-
-    back = "🔙 Back"
-    restart = "🔄 Restart"
-    exit = "🚫 Exit"

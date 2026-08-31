@@ -4,10 +4,9 @@ from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from api.deps import require_admin
-from database.models.course import Course
-from database.models.session import Session
-from database.models.user import CoursePermission, Role, User
+from accounts.deps import require_admin
+from accounts.models import CoursePermission, Role, Session, User
+from courses.models import Course
 
 router = APIRouter(
     prefix="/admin",

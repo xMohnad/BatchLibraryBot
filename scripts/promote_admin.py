@@ -7,8 +7,8 @@ import asyncio
 
 
 async def _run(username: str, *, demote: bool) -> None:
-    from database import client, init_database
-    from database.models.user import Role, User
+    from accounts.models import Role, User
+    from core.database import client, init_database
 
     await init_database()
     try:

@@ -7,8 +7,8 @@ from beanie import PydanticObjectId
 from fastapi import Cookie, Depends, HTTPException, status
 from jwt.exceptions import InvalidTokenError
 
+from accounts.models import Role, User
 from config import JWT_ALGORITHM, JWT_SECRET_KEY
-from database.models.user import Role, User
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

@@ -8,10 +8,10 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from beanie.operators import Pull
 
-from app.services.archiving import apply_caption_edit, ingest_media_batch
 from config import ARCHIVE_CHANNEL
-from core.filters import IdFilter
-from database.models.course import CAPTION_PATTERN, Course, MessageType
+from courses.archiving import apply_caption_edit, ingest_media_batch
+from courses.models import CAPTION_PATTERN, Course, MessageType
+from telegram.filters import IdFilter
 
 if TYPE_CHECKING:
     from aiogram import Bot

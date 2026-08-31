@@ -7,13 +7,9 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import ReplyKeyboardRemove
 
-from app.scene import SceneRegistry, register_scene
-from config import REGISTRATION_CODE_TTL_MINUTES
-from core.filters import RegistrationDeepLink
-from database.models.registration import PendingRegistration
+from telegram.scenes import SceneRegistry, register_scene
 
 if TYPE_CHECKING:
-    from aiogram import Bot
     from aiogram.types import Message, User
 
 router = Router(name="bot")
@@ -21,28 +17,6 @@ router.message.filter(F.chat.type == "private")
 
 
 register_scene(SceneRegistry(router))
-
-
-@router.message(CommandStart(), RegistrationDeepLink())
-async def start_registration(message: Message, bot: Bot, event_from_user: User, registration_token: str) -> None:
-    pending = await PendingRegistration.find_one(PendingRegistration.token == registration_token)
-
-    if pending is None or pending.is_expired:
-        await message.answer("رابط التسجيل غير صالح أو منتهي الصلاحية.")
-        return
-
-    if error := await pending.validate_for_telegram(bot=bot, telegram_user=event_from_user):
-        await message.answer(error)
-        return
-
-    code = pending.issue_code(telegram_user=event_from_user)
-    await pending.save()
-
-    await message.answer(
-        f"رمز التحقق الخاص بك: <code>{code}</code>\n"
-        f"صالح لمدة {REGISTRATION_CODE_TTL_MINUTES} دقائق فقط.\n\n"
-        "⚠️ لا تشارك هذا الرمز مع أي شخص."
-    )
 
 
 @router.message(Command("id"))

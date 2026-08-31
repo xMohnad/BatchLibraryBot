@@ -6,15 +6,15 @@ from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from api.deps import require_admin, require_course_permission
-from app.services.uploads import ensure_files_uploaded
+from accounts.deps import require_admin, require_course_permission
+from accounts.models import User  # noqa: TC001
 from core.text_matching import fuzzy_score
-from database.models.course import Course
-from database.models.ordinal import Ordinal
-from database.models.user import User  # noqa: TC001
+from courses.models import Course
+from courses.ordinal import Ordinal
+from courses.uploads import ensure_files_uploaded
 
 if TYPE_CHECKING:
-    from database.models.course import CourseFile
+    from courses.models import CourseFile
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 

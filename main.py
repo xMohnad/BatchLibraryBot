@@ -7,10 +7,11 @@ from aiogram.types import Update
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from api import api
-from app.bot import bot, dp
+from api import router as api_router
 from config import WEBHOOK_EP, WEBHOOK_SECRET
-from database import init_database
+from core.database import init_database
+from telegram.bot import bot
+from telegram.dispatcher import dp
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await init_database()
     yield
-    from database import client
+    from core.database import client
 
     await client.close()
 
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(api.router)
+app.include_router(api_router)
 
 
 @app.get("/", response_class=HTMLResponse)

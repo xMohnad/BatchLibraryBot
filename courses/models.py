@@ -13,9 +13,9 @@ from beanie import Document, Insert, PydanticObjectId, Save, Update, after_event
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
 
+from core.mixins import TimestampMixin
 from core.text_matching import resolve_best_match
-from database.models.mixins import TimestampMixin
-from database.models.ordinal import Ordinal
+from courses.ordinal import Ordinal
 
 if TYPE_CHECKING:
     from aiogram.types import Message

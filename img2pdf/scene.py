@@ -15,8 +15,9 @@ from aiogram.types import (
 )
 from PIL import Image
 
-from app.scene.models import Action, File
 from config import TMP
+from img2pdf.models import File
+from telegram.actions import Action
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

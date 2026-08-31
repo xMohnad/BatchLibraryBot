@@ -51,13 +51,14 @@ def parse_args() -> argparse.Namespace:
 
 async def run_prod(args: argparse.Namespace) -> None:
     """Production mode: register the bot webhook, then serve the API in the current event loop."""
-    from app.bot import bot, init_bot
     from config import WEBHOOK_SECRET, WEBHOOK_URL
+    from telegram.bot import bot
+    from telegram.dispatcher import setup_dispatcher
 
     if not WEBHOOK_URL:
         raise RuntimeError("WEBHOOK_URL must be set in the environment to run with --prod.")
 
-    await init_bot()
+    await setup_dispatcher()
     await bot.set_webhook(WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
 
     from main import app
@@ -69,10 +70,11 @@ async def run_prod(args: argparse.Namespace) -> None:
 
 async def run_bot_managed(stop_event: asyncio.Event) -> None:
     """Run the bot in polling mode until stop_event is set."""
-    from app.bot import bot, dp, init_bot
+    from telegram.bot import bot
+    from telegram.dispatcher import dp, setup_dispatcher
 
     await bot.delete_webhook(drop_pending_updates=False)
-    await init_bot()
+    await setup_dispatcher()
     logger.info("Bot is running in polling mode.")
 
     polling_task = asyncio.create_task(dp.start_polling(bot, handle_signals=False))
@@ -94,7 +96,7 @@ async def run_api_managed(args: argparse.Namespace, stop_event: asyncio.Event) -
 
 
 async def run(args: argparse.Namespace) -> None:
-    from database import init_database
+    from core.database import init_database
 
     await init_database()
 
@@ -119,7 +121,7 @@ async def run_and_cleanup(args: argparse.Namespace) -> None:
     try:
         await run(args)
     finally:
-        from database import client
+        from core.database import client
 
         await client.close()
 

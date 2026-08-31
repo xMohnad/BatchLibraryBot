@@ -6,10 +6,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import jwt
+from aiogram.utils.deep_linking import create_start_link
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
-from api.deps import get_current_user
+from accounts.deps import get_current_user
+from accounts.models import CoursePermission, Gender, PendingRegistration, Session, User
 from config import (
     ACCESS_TOKEN_TTL_MINUTES,
     COOKIE_SECURE,
@@ -30,9 +32,7 @@ from core.security import (
     verify_code,
     verify_password,
 )
-from database.models.registration import PendingRegistration
-from database.models.session import Session
-from database.models.user import CoursePermission, Gender, User
+from telegram.bot import bot
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +56,15 @@ class RegisterRequest(BaseModel):
 
 class RegisterResponse(BaseModel):
     registrationToken: str
-    botDeepLink: str | None
+    botDeepLink: str
     expiresInMinutes: int
 
     @classmethod
     async def from_pending(cls, pending: PendingRegistration) -> RegisterResponse:
+        verify_link = await create_start_link(bot, f"reg_{pending.token}")
         return cls(
             registrationToken=pending.token,
-            botDeepLink=await pending.verify_link,
+            botDeepLink=verify_link,
             expiresInMinutes=REGISTRATION_PENDING_TTL_MINUTES,
         )
 

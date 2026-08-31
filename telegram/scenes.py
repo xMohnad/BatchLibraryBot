@@ -6,8 +6,8 @@ from aiogram.fsm.scene import Scene
 from aiogram.fsm.scene import SceneRegistry as _SceneRegistry
 from aiogram.types import TelegramObject
 
-from app.scene.browse import BrowseScene
-from app.scene.img2pdf import Img2PdfScene
+from courses.browse_scene import BrowseScene
+from img2pdf.scene import Img2PdfScene
 
 SCENES: dict[str, dict[type[Scene], str]] = {
     "bot": {

@@ -9,12 +9,13 @@ import cloudinary
 import cloudinary.uploader
 
 from config import CLOUDINARY_URL, TMP
+from telegram.bot import bot
 
 if TYPE_CHECKING:
     from aiogram import Bot
     from beanie import PydanticObjectId
 
-    from database.models.course import Course, CourseFile
+    from courses.models import Course, CourseFile
 
 
 logger = logging.getLogger(__name__)
@@ -67,8 +68,6 @@ async def ensure_files_uploaded(course: Course) -> None:
 
     assert course.id is not None
     async with _upload_locks[course.id]:
-        from app.bot import bot
-
         folder = f"{course.id}"
         # someone else finished uploading while we waited for the lock
         if not (pending := [_upload_file(bot, folder, f) for f in course.files if f.url is None]):

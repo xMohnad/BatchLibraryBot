@@ -9,10 +9,10 @@ from aiogram.fsm.scene import Scene, on
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
-from app.scene.models import Action
 from config import ARCHIVE_CHANNEL
-from database.models.course import Course, CourseType
-from database.models.ordinal import Ordinal
+from courses.models import Course, CourseType
+from courses.ordinal import Ordinal
+from telegram.actions import Action
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

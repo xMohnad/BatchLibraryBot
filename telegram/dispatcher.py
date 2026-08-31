@@ -1,22 +1,14 @@
 import logging
 
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram import Dispatcher
 from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, ErrorEvent
 
-from app.handlers import setup_routes
-from app.services.middlewares import setup_middlewares
-from config import TELEGRAM_BOT_TOKEN
 from core.log import setup_logging
+from telegram.bot import bot
+from telegram.middlewares import setup_middlewares
+from telegram.routers import setup_routes
 
 logger = logging.getLogger(__name__)
-
-bot = Bot(
-    TELEGRAM_BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True),
-)
-
 
 dp = Dispatcher()
 
@@ -27,10 +19,9 @@ async def global_error_handler(event: ErrorEvent):
     logger.critical("Unhandled exception", exc_info=event.exception)
 
 
-async def init_bot() -> None:
+async def setup_dispatcher() -> None:
     setup_logging(bot)
 
-    # Load middlewares and routes
     setup_middlewares(dp)
     setup_routes(dp)
 

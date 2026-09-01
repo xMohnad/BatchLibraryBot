@@ -11,7 +11,6 @@ from accounts.models import User  # noqa: TC001
 from core.text_matching import fuzzy_score
 from courses.models import Course
 from courses.ordinal import Ordinal
-from courses.uploads import ensure_files_uploaded
 
 if TYPE_CHECKING:
     from courses.models import CourseFile
@@ -179,7 +178,6 @@ async def get_course(course_id: PydanticObjectId) -> CourseDetail:
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found.")
 
-    await ensure_files_uploaded(course)
     return CourseDetail.from_course(course)
 
 

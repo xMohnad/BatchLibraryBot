@@ -8,6 +8,7 @@ from aiogram import F, Router
 from config import ARCHIVE_CHANNEL, CHANNEL_ID
 from courses.archiving import copy_to_archive, ingest_media_batch
 from courses.models import CAPTION_PATTERN, Course, CourseFile, MessageType
+from courses.uploads import ensure_files_uploaded
 from telegram.filters import IdFilter
 
 if TYPE_CHECKING:
@@ -59,7 +60,8 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
             file.archiveTelegramMessageId = copied.message_id
             course.files.append(file)
-            await course.save()
+            if not await ensure_files_uploaded(course):
+                await course.save()
             logger.info("Archived new file: message_id %d -> %d.", message.message_id, copied.message_id)
     else:
         logger.warning("Course not found for name: %s. Ignoring edit.", course_name)

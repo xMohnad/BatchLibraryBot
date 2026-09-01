@@ -137,7 +137,6 @@ class Session(Document):
     """Next session ID after rotation (for reuse detection)."""
 
     class Settings:
-        name = "sessions"
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("userId", 1)]),
             IndexModel([("refreshTokenHash", 1)], unique=True),

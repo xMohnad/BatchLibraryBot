@@ -8,12 +8,16 @@ if TYPE_CHECKING:
     from aiogram.types import Message
 
 
-class RegistrationDeepLink(Filter):
-    """Matches `/start reg_<token>` and extracts the token."""
+class PrefixDeepLink(Filter):
+    """Matches `/start <prefix><value>` deep links and extracts the value."""
+
+    def __init__(self, prefix: str, key: str) -> None:
+        self.prefix = prefix
+        self.key = key
 
     async def __call__(self, message: Message, command: CommandObject) -> bool | dict[str, str]:
-        if command.args and command.args.startswith("reg_"):
-            return {"registration_token": command.args.removeprefix("reg_")}
+        if command.args and command.args.startswith(self.prefix):
+            return {self.key: command.args.removeprefix(self.prefix)}
         return False
 
 

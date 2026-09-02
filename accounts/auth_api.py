@@ -11,6 +11,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from accounts.deps import get_current_user
+from accounts.handlers import REGISTRATION_DEEP_LINK_PREFIX
 from accounts.models import CoursePermission, Gender, PendingRegistration, Session, User
 from config import (
     ACCESS_TOKEN_TTL_MINUTES,
@@ -61,7 +62,7 @@ class RegisterResponse(BaseModel):
 
     @classmethod
     async def from_pending(cls, pending: PendingRegistration) -> RegisterResponse:
-        verify_link = await create_start_link(bot, f"reg_{pending.token}")
+        verify_link = await create_start_link(bot, f"{REGISTRATION_DEEP_LINK_PREFIX}{pending.token}")
         return cls(
             registrationToken=pending.token,
             botDeepLink=verify_link,

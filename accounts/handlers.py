@@ -13,7 +13,7 @@ from config import (
     REGISTRATION_CODE_TTL_MINUTES,
     REGISTRATION_MAX_CODE_SENDS,
 )
-from telegram.filters import RegistrationDeepLink
+from telegram.filters import PrefixDeepLink
 
 if TYPE_CHECKING:
     from aiogram import Bot
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 router = Router(name="accounts")
 router.message.filter(F.chat.type == "private")
 
+REGISTRATION_DEEP_LINK_PREFIX = "reg_"
+
 ALLOWED_CHAT_MEMBER_STATUSES = {
     ChatMemberStatus.CREATOR,
     ChatMemberStatus.ADMINISTRATOR,
@@ -31,7 +33,7 @@ ALLOWED_CHAT_MEMBER_STATUSES = {
 }
 
 
-@router.message(CommandStart(), RegistrationDeepLink())
+@router.message(CommandStart(), PrefixDeepLink(REGISTRATION_DEEP_LINK_PREFIX, "registration_token"))
 async def start_registration(
     message: Message, bot: Bot, event_from_user: TelegramUser, registration_token: str
 ) -> None:

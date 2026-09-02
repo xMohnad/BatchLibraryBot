@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 CAPTION_PATTERN = re.compile(r"(?P<course>.+?)(?:\s*\((?P<tutor>.+?)\))?\s*\|\s*(?P<title>.+)")
 
+FILE_DEEP_LINK_PREFIX = "file_"
+
 
 class CourseType(StrEnum):
     PRACTICAL = "عملي"
@@ -236,6 +238,16 @@ class Course(TimestampMixin, Document):
     def find_file_by_archive_id(self, archive_message_id: int) -> CourseFile | None:
         """Find a file in this course by its archive message id."""
         return next((f for f in self.files if f.archiveTelegramMessageId == archive_message_id), None)
+
+    @classmethod
+    async def find_by_file_archive_id(cls, archive_message_id: int) -> tuple[Course, CourseFile] | None:
+        """Find the course and file for a given archive-channel message id, across all courses."""
+        course = await cls.find_one(
+            cls.files.archiveTelegramMessageId == archive_message_id  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        if course and (file := course.find_file_by_archive_id(archive_message_id)):
+            return course, file
+        return None
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""

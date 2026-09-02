@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
+from aiogram.utils.deep_linking import create_start_link
 from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -9,8 +10,9 @@ from pydantic import BaseModel
 from accounts.deps import require_admin, require_course_permission
 from accounts.models import User  # noqa: TC001
 from core.text_matching import fuzzy_score
-from courses.models import Course
+from courses.models import FILE_DEEP_LINK_PREFIX, Course
 from courses.ordinal import Ordinal
+from telegram.bot import bot
 
 if TYPE_CHECKING:
     from courses.models import CourseFile
@@ -56,10 +58,11 @@ class CourseFileSummary(BaseModel):
     mimeType: str
     extension: str
     sizeBytes: int
-    url: str | None
+    url: str
 
     @classmethod
-    def from_course_file(cls, file: CourseFile) -> CourseFileSummary:
+    async def from_course_file(cls, file: CourseFile) -> CourseFileSummary:
+        url = file.url or await create_start_link(bot, f"{FILE_DEEP_LINK_PREFIX}{file.archiveTelegramMessageId}")
         return cls(
             id=file.archiveTelegramMessageId,
             title=file.title,
@@ -67,7 +70,7 @@ class CourseFileSummary(BaseModel):
             mimeType=file.mimeType,
             extension=file.extension,
             sizeBytes=file.sizeBytes,
-            url=file.url,
+            url=url,
         )
 
 
@@ -88,13 +91,10 @@ class CourseDetail(CourseSummary):
     files: list[CourseFileSummary]
 
     @classmethod
-    def from_course(cls, course: Course) -> CourseDetail:
+    async def from_course_with_files(cls, course: Course) -> CourseDetail:
         summary = CourseSummary.from_course(course)
-        sorted_files = sorted(course.files, key=lambda f: f.title)
-        return cls(
-            **summary.model_dump(),
-            files=[CourseFileSummary.from_course_file(f) for f in sorted_files],
-        )
+        files = [await CourseFileSummary.from_course_file(f) for f in course.files]
+        return cls(**summary.model_dump(), files=files)
 
 
 async def _get_course_or_404(course_id: PydanticObjectId) -> Course:
@@ -178,7 +178,7 @@ async def get_course(course_id: PydanticObjectId) -> CourseDetail:
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found.")
 
-    return CourseDetail.from_course(course)
+    return await CourseDetail.from_course_with_files(course)
 
 
 @router.patch("/{course_id}", response_model=CourseSummary)
@@ -219,7 +219,7 @@ async def rename_course_file(
 
     file.title = title
     await course.save()
-    return CourseFileSummary.from_course_file(file)
+    return await CourseFileSummary.from_course_file(file)
 
 
 @router.delete("/{course_id}/files/{file_id}", status_code=204)

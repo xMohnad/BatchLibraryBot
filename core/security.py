@@ -25,8 +25,6 @@ def validate_password_strength(password: str, *, username: str | None = None) ->
     """Return an error message if `password` is too weak, else None."""
     if len(password) < MIN_PASSWORD_LENGTH:
         return f"Password must be at least {MIN_PASSWORD_LENGTH} characters long."
-    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
-        return "Password must contain at least one letter and one digit."
     if username and username.strip().lower() in password.lower():
         return "Password must not contain the username."
     return None

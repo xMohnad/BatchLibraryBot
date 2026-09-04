@@ -145,10 +145,10 @@ class Session(Document):
 
     @classmethod
     async def revoke_all_for_user(cls, user_id: PydanticObjectId) -> None:
-        cls.find(
+        await cls.find(
             cls.userId == user_id,
             cls.revoked == False,  # noqa: E712
-        ).update({"$set": {"revoked": True}})
+        ).update_many({"$set": {"revoked": True}})
 
 
 class PendingRegistration(Document):

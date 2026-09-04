@@ -7,12 +7,13 @@ from typing import Annotated
 
 import jwt
 from aiogram.utils.deep_linking import create_start_link
+from beanie.operators import In
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from accounts.deps import get_current_user
 from accounts.handlers import REGISTRATION_DEEP_LINK_PREFIX
-from accounts.models import CoursePermission, Gender, PendingRegistration, Session, User
+from accounts.models import CoursePermission, Gender, PendingRegistration, Role, Session, User
 from config import (
     ACCESS_TOKEN_TTL_MINUTES,
     COOKIE_SECURE,
@@ -24,7 +25,7 @@ from config import (
     REGISTRATION_MAX_CODE_ATTEMPTS,
     REGISTRATION_PENDING_TTL_MINUTES,
 )
-from core.rate_limit import login_limiter, register_limiter, verify_limiter
+from core.rate_limit import login_limiter, password_change_limiter, register_limiter, verify_limiter
 from core.security import (
     generate_refresh_token,
     hash_password,
@@ -33,6 +34,8 @@ from core.security import (
     verify_code,
     verify_password,
 )
+from courses.api import CourseSummary
+from courses.models import Course
 from telegram.bot import bot
 
 logger = logging.getLogger(__name__)
@@ -85,7 +88,7 @@ class UserPublic(BaseModel):
     username: str
     fullName: str
     gender: Gender
-    role: str
+    role: Role
     permissions: list[CoursePermission]
 
     @classmethod
@@ -96,9 +99,24 @@ class UserPublic(BaseModel):
             username=user.username,
             fullName=user.fullName,
             gender=user.gender,
-            role=str(user.role),
+            role=user.role,
             permissions=user.permissions,
         )
+
+
+class UpdateProfileRequest(BaseModel):
+    fullName: str = Field(min_length=2, max_length=100)
+
+
+class ChangePasswordRequest(BaseModel):
+    currentPassword: str
+    newPassword: str
+
+
+class MyPermission(BaseModel):
+    course: CourseSummary
+    canAdd: bool
+    canEdit: bool
 
 
 def _client_ip(request: Request) -> str:
@@ -304,3 +322,63 @@ async def logout(response: Response, refresh_token: Annotated[str | None, Cookie
 @router.get("/me", response_model=UserPublic)
 async def me(user: Annotated[User, Depends(get_current_user)]) -> UserPublic:
     return UserPublic.from_user(user)
+
+
+@router.patch("/me", response_model=UserPublic)
+async def update_me(payload: UpdateProfileRequest, user: Annotated[User, Depends(get_current_user)]) -> UserPublic:
+    """Update the current user's own editable profile fields."""
+    user.fullName = payload.fullName.strip()
+    if not user.fullName:
+        raise HTTPException(400, "Full name cannot be empty.")
+
+    await user.save()
+    return UserPublic.from_user(user)
+
+
+@router.post("/me/password", response_model=UserPublic)
+async def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    user: Annotated[User, Depends(get_current_user)],
+) -> UserPublic:
+    assert user.id is not None
+
+    if not password_change_limiter.hit(str(user.id)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Try again shortly.")
+
+    if not verify_password(payload.currentPassword, user.passwordHash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect.")
+
+    if error := validate_password_strength(payload.newPassword, username=user.username):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, error)
+
+    user.passwordHash = hash_password(payload.newPassword)
+    await user.save()
+
+    await Session.revoke_all_for_user(user.id)
+    await _issue_session(response, request, user)
+
+    return UserPublic.from_user(user)
+
+
+@router.get("/me/permissions", response_model=list[MyPermission])
+async def my_permissions(user: Annotated[User, Depends(get_current_user)]) -> list[MyPermission]:
+    """Return the current user's per-course permissions with the course details resolved.
+
+    Admins implicitly have full access to everything and have no grants of
+    their own to list here, so this always returns an empty list for them.
+    """
+    if not user.permissions or user.role == Role.ADMIN:
+        return []
+
+    course_ids = [p.courseId for p in user.permissions]
+    courses = {course.id: course for course in await Course.find(In(Course.id, course_ids)).to_list()}
+
+    result: list[MyPermission] = []
+    for perm in user.permissions:
+        course = courses.get(perm.courseId)
+        if course is None:
+            continue
+        result.append(MyPermission(course=CourseSummary.from_course(course), canAdd=perm.canAdd, canEdit=perm.canEdit))
+    return result

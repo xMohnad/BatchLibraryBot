@@ -117,20 +117,20 @@ class CourseFile(BaseModel):
         if content_type not in MessageType or file is None:
             raise ValueError("Message does not contain a supported file (document, video, or audio).")
 
-        file_name = kwargs.pop("originalName", None) or file.file_name
-        if not file_name:
-            raise ValueError("Telegram did not report a file name for this message.")
-
         file_size = kwargs.pop("sizeBytes", None) or file.file_size
         if file_size is None:
             raise ValueError("Telegram did not report a file size for this message.")
 
-        mime_type = (
-            kwargs.pop("mimeType", None)
-            or file.mime_type
-            or mimetypes.guess_type(file_name)[0]
-            or "application/octet-stream"
-        )
+        mime_type = kwargs.pop("mimeType", None) or file.mime_type
+        file_name = kwargs.pop("originalName", None) or file.file_name
+        if not file_name:
+            guess_extension = mimetypes.guess_extension(mime_type) if mime_type else None
+            if guess_extension is None:
+                raise ValueError("Cannot determine file extension")
+
+            file_name = f"{kwargs['title']}{guess_extension}"
+
+        mime_type = mime_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
         extension = Path(file_name).suffix.lstrip(".")
         return cls(

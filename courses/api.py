@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from pathlib import Path
+from typing import Annotated
 
 from aiogram.utils.deep_linking import create_start_link
 from beanie import PydanticObjectId  # noqa: TC002
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from accounts.deps import require_admin, require_course_permission
 from accounts.models import User  # noqa: TC001
 from core.text_matching import fuzzy_score
-from courses.models import FILE_DEEP_LINK_PREFIX, Course
+from courses.archiving import TELEGRAM_UPLOAD_LIMIT, send_new_file_to_archive
+from courses.models import FILE_DEEP_LINK_PREFIX, Course, CourseFile
 from courses.ordinal import Ordinal
+from courses.uploads import CLOUDINARY_SIZE_LIMIT, save_upload_to_tmp, upload_to_cloudinary
 from telegram.bot import bot
-
-if TYPE_CHECKING:
-    from courses.models import CourseFile
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -202,7 +202,67 @@ async def delete_course(course_id: PydanticObjectId, _admin: Annotated[User, Dep
     await course.delete()
 
 
-# TODO: add add_course_file
+@router.post("/{course_id}/files", response_model=CourseFileSummary, status_code=201)
+async def add_course_file(
+    course_id: PydanticObjectId,
+    title: Annotated[str, Form(min_length=1)],
+    file: Annotated[UploadFile, File()],
+    _user: Annotated[User, Depends(require_course_permission("add"))],
+) -> CourseFileSummary:
+    """Upload a file and archive it on Telegram."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file is missing a filename.")
+
+    content = await file.read()
+    size_bytes = len(content)
+    if size_bytes == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    if size_bytes > TELEGRAM_UPLOAD_LIMIT:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds Telegram's {TELEGRAM_UPLOAD_LIMIT // (1024 * 1024)} MB upload limit.",
+        )
+
+    course = await _get_course_or_404(course_id)
+
+    extension = Path(file.filename).suffix.lstrip(".")
+    local_path = await save_upload_to_tmp(content, extension)
+    try:
+        cloudinary_result = None
+        if size_bytes <= CLOUDINARY_SIZE_LIMIT:
+            cloudinary_result = await upload_to_cloudinary(local_path, str(course.id), file.filename)
+
+        secure_url = cloudinary_result["secure_url"] if cloudinary_result else None
+        message = await send_new_file_to_archive(
+            bot=bot,
+            local_path=local_path,
+            filename=file.filename,
+            caption=course.formatted_info(title),
+            size_bytes=size_bytes,
+            cloudinary_url=secure_url,
+        )
+    finally:
+        local_path.unlink(missing_ok=True)
+
+    if message.document is None:
+        raise HTTPException(status_code=502, detail="Telegram did not return a document for the uploaded file.")
+
+    course_file = CourseFile.from_message(
+        message,
+        title=title,
+        originalName=file.filename,
+        sizeBytes=size_bytes,
+        mimeType=file.content_type,
+        url=secure_url,
+        publicId=cloudinary_result["public_id"] if cloudinary_result else None,
+        resourceType=cloudinary_result["resource_type"] if cloudinary_result else None,
+    )
+
+    course.files.append(course_file)
+    await course.save()
+
+    return await CourseFileSummary.from_course_file(course_file)
 
 
 @router.patch("/{course_id}/files/{file_id}", response_model=CourseFileSummary)

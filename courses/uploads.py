@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import cloudinary.uploader
 
@@ -11,6 +12,8 @@ from config import CLOUDINARY_URL, TMP
 from telegram.bot import bot as _default_bot
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from aiogram import Bot
     from beanie import PydanticObjectId
 
@@ -27,6 +30,34 @@ TMP_DIR.mkdir(parents=True, exist_ok=True)
 _upload_locks: dict[PydanticObjectId, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
+async def save_upload_to_tmp(content: bytes, extension: str) -> Path:
+    """Write raw upload bytes to a unique temp path under `TMP_DIR` and return it."""
+    path = TMP_DIR / f"api-upload-{uuid4().hex}.{extension}"
+    await asyncio.to_thread(path.write_bytes, content)
+    return path
+
+
+async def upload_to_cloudinary(local_path: Path, folder: str, filename: str) -> dict | None:
+    """Upload a local file to Cloudinary. Returns the raw API result, or None if disabled/failed."""
+    if CLOUDINARY_URL is None:
+        logger.warning("Missing CLOUDINARY_URL; uploads to Cloudinary are disabled.")
+        return None
+
+    try:
+        return await asyncio.to_thread(
+            cloudinary.uploader.upload,
+            str(local_path),
+            resource_type="auto",
+            folder=folder,
+            filename=filename,
+            use_filename=True,
+            unique_filename=True,
+        )
+    except Exception:
+        logger.exception("Failed to upload file to Cloudinary (%s)", filename)
+        return None
+
+
 async def _upload_file(bot: Bot, folder: str, file: CourseFile) -> bool:
     """Download `file` from Telegram and upload it to Cloudinary. Mutates `file` in place on success."""
     if file.sizeBytes > CLOUDINARY_SIZE_LIMIT:
@@ -37,20 +68,15 @@ async def _upload_file(bot: Bot, folder: str, file: CourseFile) -> bool:
 
     try:
         await bot.download(file.fileId, local_path)
-        result = await asyncio.to_thread(
-            cloudinary.uploader.upload,
-            str(local_path),
-            resource_type="auto",
-            folder=folder,
-            filename=file.originalName,
-            use_filename=True,
-            unique_filename=True,
-        )
+        result = await upload_to_cloudinary(local_path, folder, file.originalName)
     except Exception:
-        logger.exception("Failed to upload/download file %s (%s)", file.archiveTelegramMessageId, file.originalName)
+        logger.exception("Failed to download file %s (%s)", file.archiveTelegramMessageId, file.originalName)
         return False
     finally:
         local_path.unlink(missing_ok=True)
+
+    if result is None:
+        return False
 
     file.url = result["secure_url"]
     file.publicId = result["public_id"]

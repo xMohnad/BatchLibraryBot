@@ -56,7 +56,7 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             await course.save()
             logger.info("Updated title for message_id %d.", file.originalTelegramMessageId)
         else:
-            file = await CourseFile.from_message(message, match)
+            file = CourseFile.from_message(message, match)
             copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
             file.archiveTelegramMessageId = copied.message_id
             course.files.append(file)

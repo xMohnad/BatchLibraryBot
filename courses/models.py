@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -18,7 +19,8 @@ from core.text_matching import resolve_best_match
 from courses.ordinal import Ordinal
 
 if TYPE_CHECKING:
-    from aiogram.types import Message
+    from aiogram.types import Audio, Message, Video
+    from aiogram.types import Document as TelegramDocument
 
 logger = logging.getLogger(__name__)
 
@@ -101,21 +103,34 @@ class CourseFile(BaseModel):
         return self
 
     @classmethod
-    async def from_message(cls, message: Message, match: re.Match[str], **kwargs) -> CourseFile:
+    def from_message(cls, message: Message, match: re.Match[str] | None = None, **kwargs) -> CourseFile:
         """Build a CourseFile from a Telegram message."""
         kwargs.setdefault("originalTelegramMessageId", message.message_id)
         kwargs.setdefault("archiveTelegramMessageId", message.message_id)
         kwargs.setdefault("fromChatId", message.chat.id)
         kwargs.setdefault("chatId", message.chat.id)
-        kwargs.setdefault("title", match.group("title"))
+        if match is not None:
+            kwargs.setdefault("title", match.group("title"))
 
         content_type = message.content_type
-        file = getattr(message, content_type)
-        if content_type not in MessageType or not file:
+        file: Audio | TelegramDocument | Video | None = getattr(message, content_type, None)
+        if content_type not in MessageType or file is None:
             raise ValueError("Message does not contain a supported file (document, video, or audio).")
 
-        if not (file_name := file.file_name) or not (file_size := file.file_size) or not (mime_type := file.mime_type):
-            raise ValueError("Invalid file metadata received from Telegram.")
+        file_name = kwargs.pop("originalName", None) or file.file_name
+        if not file_name:
+            raise ValueError("Telegram did not report a file name for this message.")
+
+        file_size = kwargs.pop("sizeBytes", None) or file.file_size
+        if file_size is None:
+            raise ValueError("Telegram did not report a file size for this message.")
+
+        mime_type = (
+            kwargs.pop("mimeType", None)
+            or file.mime_type
+            or mimetypes.guess_type(file_name)[0]
+            or "application/octet-stream"
+        )
 
         extension = Path(file_name).suffix.lstrip(".")
         return cls(
@@ -151,7 +166,7 @@ class CourseFile(BaseModel):
             caption = msg.caption or default_caption
             if match := CAPTION_PATTERN.search(caption):
                 course_title: str = match.group("course")
-                course_file = await cls.from_message(msg, match)
+                course_file = cls.from_message(msg, match)
                 course_files[course_title].append(course_file)
                 course_captions.setdefault(course_title, caption)
 

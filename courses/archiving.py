@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.types import FSInputFile, URLInputFile
 
 from config import ARCHIVE_CHANNEL
 from courses.models import Course, CourseFile
@@ -12,11 +13,18 @@ from courses.uploads import ensure_files_uploaded
 
 if TYPE_CHECKING:
     import re
+    from pathlib import Path
 
     from aiogram import Bot
     from aiogram.types import Message, MessageId
 
 logger = logging.getLogger(__name__)
+
+TELEGRAM_UPLOAD_LIMIT = 50 * 1024 * 1024
+"""Max size a bot can upload to Telegram via multipart/form-data (hard ceiling)."""
+
+TELEGRAM_URL_SEND_LIMIT = 20 * 1024 * 1024
+"""Max size Telegram will fetch itself when a file is sent by URL instead of uploaded directly."""
 
 
 async def copy_to_archive(bot: Bot, file: CourseFile, caption: str) -> MessageId:
@@ -37,6 +45,32 @@ async def copy_to_archive(bot: Bot, file: CourseFile, caption: str) -> MessageId
             file.originalTelegramMessageId,
             caption=caption,
         )
+
+
+async def send_new_file_to_archive(
+    bot: Bot,
+    local_path: Path,
+    filename: str,
+    caption: str,
+    size_bytes: int,
+    cloudinary_url: str | None = None,
+) -> Message:
+    """Send a local file to the archive channel, by Cloudinary URL when possible or by direct upload otherwise."""
+    if size_bytes > TELEGRAM_UPLOAD_LIMIT:
+        raise ValueError(f"File exceeds Telegram's {TELEGRAM_UPLOAD_LIMIT // (1024 * 1024)} MB upload limit.")
+
+    document = (
+        URLInputFile(cloudinary_url, filename=filename)
+        if cloudinary_url and size_bytes <= TELEGRAM_URL_SEND_LIMIT
+        else FSInputFile(local_path, filename=filename)
+    )
+
+    try:
+        return await bot.send_document(ARCHIVE_CHANNEL, document, caption=caption)
+    except TelegramRetryAfter as e:
+        logger.warning("Rate limited; sleeping for %s seconds", e.retry_after)
+        await asyncio.sleep(e.retry_after)
+        return await bot.send_document(ARCHIVE_CHANNEL, document, caption=caption)
 
 
 async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) -> list[CourseFile]:
@@ -62,7 +96,7 @@ async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) 
 async def apply_caption_edit(match: re.Match[str], message: Message) -> tuple[Course, CourseFile] | None:
     """Resolve the course for an edited/replied caption and persist the file update."""
     if course := await Course.get_course(match.group("course"), match.string):
-        file = await CourseFile.from_message(message, match)
+        file = CourseFile.from_message(message, match)
         await course.upsert_files([file])
         await ensure_files_uploaded(course)
         logger.info("Updated course with message_id %d", file.archiveTelegramMessageId)

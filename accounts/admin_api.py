@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from beanie import PydanticObjectId  # noqa: TC002
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from accounts.auth_api import MyPermission, my_permissions
 from accounts.deps import require_admin
 from accounts.models import CoursePermission, Role, Session, User
+from core.text_matching import fuzzy_score
 from courses.models import Course
 
 router = APIRouter(
@@ -26,9 +30,9 @@ class UserSummary(BaseModel):
     id: str
     username: str
     fullName: str
-    role: str
+    role: Role
     isActive: bool
-    permissions: list[CoursePermission]
+    permissionCount: int
 
     @classmethod
     def from_user(cls, user: User) -> UserSummary:
@@ -37,9 +41,9 @@ class UserSummary(BaseModel):
             id=str(user.id),
             username=user.username,
             fullName=user.fullName,
-            role=str(user.role),
+            role=user.role,
             isActive=user.isActive,
-            permissions=user.permissions,
+            permissionCount=len(user.permissions),
         )
 
 
@@ -53,9 +57,26 @@ class SetActiveRequest(BaseModel):
 
 
 @router.get("/users", response_model=list[UserSummary])
-async def list_users() -> list[UserSummary]:
-    """Return all users with role USER as a list of summaries."""
-    users = await User.find(User.role == Role.USER).to_list()
+async def list_users(
+    isActive: bool | None = None,
+    search: Annotated[str | None, Query(min_length=1)] = None,
+) -> list[UserSummary]:
+    """Return users with role USER and optional filters."""
+    query: dict[str, object] = {"role": Role.USER}
+    if isActive is not None:
+        query["isActive"] = isActive
+
+    users = await User.find(query).to_list()
+
+    if search:
+        scored: list[tuple[float, User]] = []
+        for user in users:
+            if (score := fuzzy_score(search, user.username, user.fullName)) is not None:
+                scored.append((score, user))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        users = [user for _, user in scored]
+
     return [UserSummary.from_user(u) for u in users]
 
 
@@ -73,6 +94,13 @@ async def set_user_active(user_id: PydanticObjectId, payload: SetActiveRequest) 
         await Session.revoke_all_for_user(user_id)
 
     return UserSummary.from_user(user)
+
+
+@router.get("/users/{user_id}/permissions", response_model=list[MyPermission])
+async def user_permissions(user_id: PydanticObjectId) -> list[MyPermission]:
+    """Return the user's per-course permissions with the course details resolved."""
+    user = await _get_user_or_404(user_id)
+    return await my_permissions(user)
 
 
 @router.put("/users/{user_id}/permissions/{course_id}", response_model=UserSummary)

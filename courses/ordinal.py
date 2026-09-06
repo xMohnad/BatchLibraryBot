@@ -116,7 +116,7 @@ class Ordinal(int, Enum):
         return [cls.get_name(i) for i in range(1, current_level + 1)]
 
     @classmethod
-    def available_terms(cls) -> list[str]:
-        """Returns available academic terms as Arabic words."""
-        current_term = cls.current_term()
-        return [cls.get_name(i) for i in range(1, current_term + 1)]
+    def available_terms(cls, level: int | None = None) -> list[str]:
+        """Returns available academic terms as Arabic words for the given level."""
+        max_term = 2 if level is not None and level < cls.current_level() else cls.current_term()
+        return [cls.get_name(i) for i in range(1, max_term + 1)]

@@ -72,8 +72,8 @@ class BrowseScene(Scene, state="browse"):
     async def _prompt_level_selection(self, _: dict) -> tuple[str, list[str]]:
         return "اختر المستوى:", Ordinal.available_levels()
 
-    async def _prompt_term_selection(self, _: dict) -> tuple[str, list[str]]:
-        return "اختر الفصل:", Ordinal.available_terms()
+    async def _prompt_term_selection(self, answers: dict) -> tuple[str, list[str]]:
+        return "اختر الفصل:", Ordinal.available_terms(Ordinal.get_value(answers["level"]))
 
     async def _prompt_type_selection(self, _: dict) -> tuple[str, list[str]]:
         return "اختر النوع:", [option.value for option in CourseType]

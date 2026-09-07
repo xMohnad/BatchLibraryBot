@@ -90,14 +90,15 @@ async def ensure_files_uploaded(course: Course, bot: Bot = _default_bot) -> bool
         logger.warning("Missing CLOUDINARY_URL; uploads to Cloudinary are disabled.")
         return False
 
-    if not any(f.url is None for f in course.files):
+    files = course.active_files
+    if not any(f.url is None for f in files):
         return False
 
     assert course.id is not None
     async with _upload_locks[course.id]:
         folder = str(course.id)
         # someone else may have finished uploading while we waited for the lock
-        pending_files = [f for f in course.files if f.url is None]
+        pending_files = [f for f in files if f.url is None]
         if not pending_files:
             return False
 

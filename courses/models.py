@@ -90,6 +90,9 @@ class CourseFile(BaseModel):
     resourceType: str | None = None
     """Cloudinary resource type the file was stored under (image/video/raw)."""
 
+    isDeleted: bool = False
+    """Whether this file has been soft-deleted."""
+
     createdAt: datetime = Field(default_factory=lambda: datetime.now(UTC))
     """Date and time when the document was created (UTC)."""
 
@@ -101,6 +104,11 @@ class CourseFile(BaseModel):
         """Automatically updates the 'updatedAt' field after updates any field."""
         self.updatedAt = datetime.now(UTC)
         return self
+
+    def mark_deleted(self) -> None:
+        """Flag this file as deleted without removing it from the database."""
+        self.isDeleted = True
+        self.updatedAt = datetime.now(UTC)
 
     @classmethod
     def from_message(cls, message: Message, match: re.Match[str] | None = None, **kwargs) -> CourseFile:
@@ -191,6 +199,9 @@ class Course(TimestampMixin, Document):
     files: list[CourseFile] = Field(default_factory=list)
     """List of files associated with this course."""
 
+    isDeleted: bool = False
+    """Whether this course has been soft-deleted."""
+
     class Settings:
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("files.archiveTelegramMessageId", 1)]),
@@ -201,6 +212,15 @@ class Course(TimestampMixin, Document):
     @property
     def level(self) -> str:
         return Ordinal.get_name(Ordinal.current_level(self.semester))
+
+    @property
+    def active_files(self) -> list[CourseFile]:
+        """Files belonging to this course that have not been soft-deleted."""
+        return [f for f in self.files if not f.isDeleted]
+
+    def mark_deleted(self) -> None:
+        """Flag this course as deleted without removing it from the database."""
+        self.isDeleted = True
 
     def formatted_info(self, title: str) -> str:
         """Get formatted course information."""
@@ -213,7 +233,7 @@ class Course(TimestampMixin, Document):
     @alru_cache
     async def get_courses_name(cls, semester: int) -> list[str]:
         """Retrieve course names for a given academic semester, defaults to the current semester."""
-        return await cls.distinct(Course.courseName, {"semester": semester})
+        return await cls.distinct(Course.courseName, {"semester": semester, "isDeleted": False})
 
     @classmethod
     @alru_cache
@@ -222,7 +242,7 @@ class Course(TimestampMixin, Document):
         courses = await cls.get_courses_name(semester)
         if course := resolve_best_match(courseName, courses):
             logger.info("Match: '%s' -> '%s' (semester=%s)", courseName, course, semester)
-            return await cls.find_one(cls.courseName == course, cls.semester == semester)
+            return await cls.find_one(cls.courseName == course, cls.semester == semester, cls.isDeleted == False)  # noqa: E712
 
     @classmethod
     async def get_course(cls, courseName: str, caption: str) -> Course | None:
@@ -233,7 +253,7 @@ class Course(TimestampMixin, Document):
     @alru_cache
     async def get_courses(cls, semester: int, is_practical: bool, course_name: str | None = None) -> list[Course]:
         """Fetch courses with caching."""
-        query = {Course.semester: semester, Course.isPractical: is_practical}
+        query = {Course.semester: semester, Course.isPractical: is_practical, Course.isDeleted: False}
         if course_name:
             query[Course.courseName] = course_name.strip()
 
@@ -246,21 +266,39 @@ class Course(TimestampMixin, Document):
         Course.get_courses.cache_clear()
         Course._get_course.cache_clear()
 
-    def find_file_by_original_id(self, original_message_id: int) -> CourseFile | None:
-        """Find a file in this course by its original (source-channel) message id."""
-        return next((f for f in self.files if f.originalTelegramMessageId == original_message_id), None)
+    def _find_file(self, attr: str, value: int, *, include_deleted: bool) -> CourseFile | None:
+        """Find a file in this course by matching `attr` against `value`."""
+        files = self.files if include_deleted else self.active_files
+        return next((f for f in files if getattr(f, attr) == value), None)
 
-    def find_file_by_archive_id(self, archive_message_id: int) -> CourseFile | None:
-        """Find a file in this course by its archive message id."""
-        return next((f for f in self.files if f.archiveTelegramMessageId == archive_message_id), None)
+    def find_file_by_original_id(self, original_message_id: int, *, include_deleted: bool = False) -> CourseFile | None:
+        """Find a file in this course by its original (source-channel) message id.
+
+        Soft-deleted files are skipped unless `include_deleted` is True.
+        """
+        return self._find_file("originalTelegramMessageId", original_message_id, include_deleted=include_deleted)
+
+    def find_file_by_archive_id(self, archive_message_id: int, *, include_deleted: bool = False) -> CourseFile | None:
+        """Find a file in this course by its archive message id.
+
+        Soft-deleted files are skipped unless `include_deleted` is True.
+        """
+        return self._find_file("archiveTelegramMessageId", archive_message_id, include_deleted=include_deleted)
 
     @classmethod
-    async def find_by_file_archive_id(cls, archive_message_id: int) -> tuple[Course, CourseFile] | None:
-        """Find the course and file for a given archive-channel message id, across all courses."""
-        course = await cls.find_one(
-            cls.files.archiveTelegramMessageId == archive_message_id  # pyright: ignore[reportAttributeAccessIssue]
-        )
-        if course and (file := course.find_file_by_archive_id(archive_message_id)):
+    async def find_by_file_archive_id(
+        cls, archive_message_id: int, *, include_deleted: bool = False
+    ) -> tuple[Course, CourseFile] | None:
+        """Find the course and file for a given archive-channel message id, across all courses.
+
+        Soft-deleted courses/files are skipped unless `include_deleted` is True.
+        """
+        filters = {cls.files.archiveTelegramMessageId: archive_message_id}  # pyright: ignore[reportAttributeAccessIssue]
+        if not include_deleted:
+            filters[cls.isDeleted] = False
+
+        course = await cls.find_one(filters)
+        if course and (file := course.find_file_by_archive_id(archive_message_id, include_deleted=include_deleted)):
             return course, file
         return None
 

@@ -40,7 +40,7 @@ class CourseSummary(BaseModel):
             level=Ordinal.current_level(course.semester),
             term=Ordinal.current_term(course.semester),
             isPractical=course.isPractical,
-            fileCount=len(course.files),
+            fileCount=len(course.active_files),
         )
 
 
@@ -93,7 +93,7 @@ class CourseDetail(CourseSummary):
     @classmethod
     async def from_course_with_files(cls, course: Course) -> CourseDetail:
         summary = CourseSummary.from_course(course)
-        files = [await CourseFileSummary.from_course_file(f) for f in course.files]
+        files = [await CourseFileSummary.from_course_file(f) for f in course.active_files]
         return cls(**summary.model_dump(), files=files)
 
 
@@ -117,7 +117,7 @@ async def list_courses(
 
     If only level or term is provided, the other defaults to the current value.
     """
-    query: dict[str, object] = {}
+    query: dict[str, object] = {"isDeleted": False}
 
     if level is not None or term is not None:
         semester = Ordinal.to_semester(
@@ -166,7 +166,11 @@ async def create_course(payload: CourseCreateRequest, _admin: Annotated[User, De
 @router.get("/current", response_model=list[CourseSummary])
 async def current_courses() -> list[CourseSummary]:
     """List all courses for the current semester."""
-    courses = await Course.find(Course.semester == Ordinal.current_semester()).sort(DEFAULT_SORT).to_list()
+    courses = (
+        await Course.find(Course.semester == Ordinal.current_semester(), Course.isDeleted == False)  # noqa: E712
+        .sort(DEFAULT_SORT)
+        .to_list()
+    )
     return [CourseSummary.from_course(course) for course in courses]
 
 
@@ -198,8 +202,10 @@ async def update_course(
 
 @router.delete("/{course_id}", status_code=204)
 async def delete_course(course_id: PydanticObjectId, _admin: Annotated[User, Depends(require_admin)]) -> None:
+    """Soft-delete a course."""
     course = await _get_course_or_404(course_id)
-    await course.delete()
+    course.mark_deleted()
+    await course.save()
 
 
 @router.post("/{course_id}/files", response_model=CourseFileSummary, status_code=201)
@@ -288,10 +294,11 @@ async def delete_course_file(
     file_id: int,
     _user: Annotated[User, Depends(require_course_permission("edit"))],
 ) -> None:
+    """Soft-delete a file."""
     course = await _get_course_or_404(course_id)
-    remaining = [f for f in course.files if f.archiveTelegramMessageId != file_id]
-    if len(remaining) == len(course.files):
+    file = course.find_file_by_archive_id(file_id)
+    if file is None:
         raise HTTPException(status_code=404, detail="File not found on this course.")
 
-    course.files = remaining
+    file.mark_deleted()
     await course.save()

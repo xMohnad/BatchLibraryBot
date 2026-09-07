@@ -81,7 +81,7 @@ class BrowseScene(Scene, state="browse"):
     async def _prompt_course_selection(self, answers: dict) -> tuple[str, list[str]]:
         """Return available courses for the chosen level/term/type."""
         courses = await self._get_matching_courses(answers)
-        options = [course.courseName for course in courses if course.files]
+        options = [course.courseName for course in courses if course.active_files]
 
         if not options:
             return "لم يتم إضافة مواد لهذا الاختيار بعد.", []
@@ -90,12 +90,12 @@ class BrowseScene(Scene, state="browse"):
     async def _prompt_file_selection(self, answers: dict) -> tuple[str, list[str]]:
         """Return available files for the selected course."""
         courses = await self._get_matching_courses(answers, answers["course"])
+        files = courses[0].active_files
 
-        if not courses or not courses[0].files:
+        if not files:
             return "لا توجد ملفات للمقرر المحدد.", []
 
-        options = {file.title for file in courses[0].files}
-        return "اختر المادة:", sorted(options)
+        return "اختر المادة:", sorted({file.title for file in files})
 
     async def _handle_file_download(self, message: Message, bot: Bot, answers: dict) -> None:
         """Send the selected file's messages to the user."""
@@ -105,7 +105,7 @@ class BrowseScene(Scene, state="browse"):
             await message.answer("المقرر غير موجود.")
             return
 
-        files = [file for file in courses[0].files if file.title == title]
+        files = [file for file in courses[0].active_files if file.title == title]
         if not files:
             await message.answer("الملف غير موجود.")
             return

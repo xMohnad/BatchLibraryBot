@@ -37,7 +37,7 @@ ALLOWED_CHAT_MEMBER_STATUSES = {
 async def start_registration(
     message: Message, bot: Bot, event_from_user: TelegramUser, registration_token: str
 ) -> None:
-    pending = await PendingRegistration.find_one(PendingRegistration.token == registration_token)
+    pending = await PendingRegistration.get_by_token(registration_token)
     if pending is None or pending.is_expired:
         await message.answer("رابط التسجيل غير صالح أو منتهي الصلاحية.")
         return

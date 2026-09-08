@@ -7,7 +7,6 @@ from typing import Annotated
 
 import jwt
 from aiogram.utils.deep_linking import create_start_link
-from beanie.operators import In
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
@@ -179,7 +178,7 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
     if await User.get_by_username(payload.username):
         raise HTTPException(status.HTTP_409_CONFLICT, "Username is already taken.")
 
-    existing_pending = await PendingRegistration.find_one(PendingRegistration.username == payload.username)
+    existing_pending = await PendingRegistration.get_by_username(payload.username)
     if existing_pending and not existing_pending.is_expired:
         raise HTTPException(status.HTTP_409_CONFLICT, "This username already has a registration in progress.")
 
@@ -203,7 +202,7 @@ async def verify_registration(payload: VerifyRequest, request: Request, response
     if not verify_limiter.hit(_client_ip(request)):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Try again shortly.")
 
-    pending = await PendingRegistration.find_one(PendingRegistration.token == payload.registrationToken)
+    pending = await PendingRegistration.get_by_token(payload.registrationToken)
     if pending is None or pending.is_expired:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Registration link is invalid or has expired.")
 
@@ -282,7 +281,7 @@ async def refresh(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No refresh token.")
 
     token_hash = hash_refresh_token(refresh_token)
-    session = await Session.find_one(Session.refreshTokenHash == token_hash)
+    session = await Session.get_by_refresh_token_hash(token_hash)
     if session is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unknown session.")
 
@@ -311,7 +310,7 @@ async def refresh(
 async def logout(response: Response, refresh_token: Annotated[str | None, Cookie()] = None) -> dict[str, bool]:
     if refresh_token:
         token_hash = hash_refresh_token(refresh_token)
-        if session := await Session.find_one(Session.refreshTokenHash == token_hash):
+        if session := await Session.get_by_refresh_token_hash(token_hash):
             session.revoked = True
             await session.save()
 
@@ -373,7 +372,7 @@ async def my_permissions(user: Annotated[User, Depends(get_current_user)]) -> li
         return []
 
     course_ids = [p.courseId for p in user.permissions]
-    courses = {course.id: course for course in await Course.find(In(Course.id, course_ids)).to_list()}
+    courses = await Course.get_many(course_ids)
 
     result: list[MyPermission] = []
     for perm in user.permissions:

@@ -79,6 +79,7 @@ class User(TimestampMixin, Document):
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("username", 1)], unique=True),
             IndexModel([("telegramId", 1)], unique=True),
+            IndexModel([("role", 1), ("isActive", 1)]),
         ]
 
     @property
@@ -107,6 +108,15 @@ class User(TimestampMixin, Document):
     @classmethod
     async def get_by_telegram_id(cls, telegram_id: int) -> User | None:
         return await cls.find_one(cls.telegramId == telegram_id)
+
+    @classmethod
+    async def list_by_role(cls, role: Role, *, is_active: bool | None = None) -> list[User]:
+        """List users with a given role, optionally filtered by active status."""
+        query: dict[object, object] = {User.role: role}
+        if is_active is not None:
+            query[User.isActive] = is_active
+
+        return await User.find(query).to_list()
 
 
 class Session(Document):
@@ -138,10 +148,15 @@ class Session(Document):
 
     class Settings:
         indexes: ClassVar[list[IndexModel]] = [
-            IndexModel([("userId", 1)]),
+            IndexModel([("userId", 1), ("revoked", 1)]),
             IndexModel([("refreshTokenHash", 1)], unique=True),
             IndexModel([("expiresAt", 1)], expireAfterSeconds=0),
         ]
+
+    @classmethod
+    async def get_by_refresh_token_hash(cls, token_hash: str) -> Session | None:
+        """Look up a session by its hashed refresh token."""
+        return await cls.find_one(cls.refreshTokenHash == token_hash)
 
     @classmethod
     async def revoke_all_for_user(cls, user_id: PydanticObjectId) -> None:
@@ -199,8 +214,19 @@ class PendingRegistration(Document):
     class Settings:
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("token", 1)], unique=True),
+            IndexModel([("username", 1)]),
             IndexModel([("expiresAt", 1)], expireAfterSeconds=0),
         ]
+
+    @classmethod
+    async def get_by_token(cls, token: str) -> PendingRegistration | None:
+        """Look up a pending registration by its deep-link token."""
+        return await cls.find_one(cls.token == token)
+
+    @classmethod
+    async def get_by_username(cls, username: str) -> PendingRegistration | None:
+        """Look up an in-progress registration by desired username."""
+        return await cls.find_one(cls.username == username)
 
     @property
     def is_expired(self) -> bool:

@@ -117,19 +117,14 @@ async def list_courses(
 
     If only level or term is provided, the other defaults to the current value.
     """
-    query: dict[str, object] = {"isDeleted": False}
-
+    semester = None
     if level is not None or term is not None:
         semester = Ordinal.to_semester(
             level or Ordinal.current_level(),
             term or Ordinal.current_term(),
         )
-        query["semester"] = semester
 
-    if isPractical is not None:
-        query["isPractical"] = isPractical
-
-    find_query = Course.find(query)
+    find_query = Course.list_query(semester=semester, is_practical=isPractical)
 
     if search:
         candidates = await find_query.to_list()
@@ -166,18 +161,14 @@ async def create_course(payload: CourseCreateRequest, _admin: Annotated[User, De
 @router.get("/current", response_model=list[CourseSummary])
 async def current_courses() -> list[CourseSummary]:
     """List all courses for the current semester."""
-    courses = (
-        await Course.find(Course.semester == Ordinal.current_semester(), Course.isDeleted == False)  # noqa: E712
-        .sort(DEFAULT_SORT)
-        .to_list()
-    )
+    courses = await Course.get_current_courses()
     return [CourseSummary.from_course(course) for course in courses]
 
 
 @router.get("/{course_id}", response_model=CourseDetail)
 async def get_course(course_id: PydanticObjectId) -> CourseDetail:
     """Fetch a single course along with its associated files."""
-    course = await Course.get(course_id)
+    course = await Course.get_cached(course_id)
 
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found.")

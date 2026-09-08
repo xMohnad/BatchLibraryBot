@@ -62,11 +62,7 @@ async def list_users(
     search: Annotated[str | None, Query(min_length=1)] = None,
 ) -> list[UserSummary]:
     """Return users with role USER and optional filters."""
-    query: dict[str, object] = {"role": Role.USER}
-    if isActive is not None:
-        query["isActive"] = isActive
-
-    users = await User.find(query).to_list()
+    users = await User.list_by_role(Role.USER, is_active=isActive)
 
     if search:
         scored: list[tuple[float, User]] = []
@@ -110,7 +106,7 @@ async def grant_course_permission(
     payload: GrantPermissionRequest,
 ) -> UserSummary:
     """Grant (or update) add/edit permission for one course. Upsert semantics."""
-    if await Course.get(course_id) is None:
+    if await Course.get_cached(course_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found.")
 
     user = await _get_user_or_404(user_id)

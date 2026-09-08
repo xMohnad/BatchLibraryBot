@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, ClassVar, Self
 
 from async_lru import alru_cache
 from beanie import Document, Insert, PydanticObjectId, Save, Update, after_event
+from beanie.operators import In
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
 
@@ -204,9 +205,10 @@ class Course(TimestampMixin, Document):
 
     class Settings:
         indexes: ClassVar[list[IndexModel]] = [
-            IndexModel([("files.archiveTelegramMessageId", 1)]),
-            IndexModel([("semester", 1), ("courseName", 1)]),
-            IndexModel([("semester", 1), ("isPractical", 1), ("courseName", 1)]),
+            IndexModel([("files.archiveTelegramMessageId", 1), ("isDeleted", 1)]),
+            IndexModel([("isDeleted", 1), ("semester", 1), ("isPractical", 1), ("courseName", 1)]),
+            IndexModel([("isDeleted", 1), ("semester", 1), ("createdAt", -1)]),
+            IndexModel([("isDeleted", 1), ("createdAt", -1)]),
         ]
 
     @property
@@ -259,12 +261,59 @@ class Course(TimestampMixin, Document):
 
         return await Course.find(query).to_list()
 
+    @classmethod
+    @alru_cache
+    async def get_current_courses(cls) -> list[Course]:
+        """Fetch every non-deleted course for the current semester, newest first, with caching."""
+        semester = Ordinal.current_semester()
+        return (
+            await Course.find(Course.semester == semester, Course.isDeleted == False)  # noqa: E712
+            .sort("-createdAt")
+            .to_list()
+        )
+
+    @classmethod
+    @alru_cache
+    async def get_cached(cls, course_id: PydanticObjectId) -> Course | None:
+        """Fetch a single course by id, with caching."""
+        return await cls.get(course_id)
+
+    @classmethod
+    def list_query(
+        cls,
+        *,
+        semester: int | None = None,
+        is_practical: bool | None = None,
+        is_deleted: bool | None = False,
+    ):
+        """Build a find query for course listings, filtered by the given fields."""
+        query: dict[object, object] = {}
+        if is_deleted is not None:
+            query[Course.isDeleted] = is_deleted
+        if semester is not None:
+            query[Course.semester] = semester
+        if is_practical is not None:
+            query[Course.isPractical] = is_practical
+
+        return cls.find(query)
+
+    @classmethod
+    async def get_many(cls, course_ids: list[PydanticObjectId]) -> dict[PydanticObjectId, Course]:
+        """Fetch several courses by id at once, keyed by id."""
+        if not course_ids:
+            return {}
+        courses = await Course.find(In(Course.id, course_ids)).to_list()
+        return {course.id: course for course in courses if course.id is not None}
+
     @after_event(Insert, Save, Update)
     def _invalidate_caches(self) -> None:
         """Clear every course-related cache whenever a course is created or modified."""
         Course.get_courses_name.cache_clear()
         Course.get_courses.cache_clear()
         Course._get_course.cache_clear()
+        Course.get_current_courses.cache_clear()
+        Course.get_cached.cache_clear()
+        Course._find_by_file_archive_id_cached.cache_clear()
 
     def _find_file(self, attr: str, value: int, *, include_deleted: bool) -> CourseFile | None:
         """Find a file in this course by matching `attr` against `value`."""
@@ -286,13 +335,11 @@ class Course(TimestampMixin, Document):
         return self._find_file("archiveTelegramMessageId", archive_message_id, include_deleted=include_deleted)
 
     @classmethod
-    async def find_by_file_archive_id(
+    @alru_cache
+    async def _find_by_file_archive_id_cached(
         cls, archive_message_id: int, *, include_deleted: bool = False
     ) -> tuple[Course, CourseFile] | None:
-        """Find the course and file for a given archive-channel message id, across all courses.
-
-        Soft-deleted courses/files are skipped unless `include_deleted` is True.
-        """
+        """Cached lookup backing `find_by_file_archive_id`."""
         filters = {cls.files.archiveTelegramMessageId: archive_message_id}  # pyright: ignore[reportAttributeAccessIssue]
         if not include_deleted:
             filters[cls.isDeleted] = False
@@ -301,6 +348,16 @@ class Course(TimestampMixin, Document):
         if course and (file := course.find_file_by_archive_id(archive_message_id, include_deleted=include_deleted)):
             return course, file
         return None
+
+    @classmethod
+    async def find_by_file_archive_id(
+        cls, archive_message_id: int, *, include_deleted: bool = False
+    ) -> tuple[Course, CourseFile] | None:
+        """Find the course and file for a given archive-channel message id, across all courses.
+
+        Soft-deleted courses/files are skipped unless `include_deleted` is True.
+        """
+        return await cls._find_by_file_archive_id_cached(archive_message_id, include_deleted=include_deleted)
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
         """Upsert files by archiveTelegramMessageId."""

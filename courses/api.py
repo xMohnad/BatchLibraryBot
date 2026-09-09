@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -55,6 +56,7 @@ class CourseFileSummary(BaseModel):
     id: int
     title: str
     originalName: str
+    createdAt: datetime
     mimeType: str
     extension: str
     sizeBytes: int
@@ -67,6 +69,7 @@ class CourseFileSummary(BaseModel):
             id=file.archiveTelegramMessageId,
             title=file.title,
             originalName=file.originalName,
+            createdAt=file.createdAt,
             mimeType=file.mimeType,
             extension=file.extension,
             sizeBytes=file.sizeBytes,

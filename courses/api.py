@@ -116,18 +116,8 @@ async def list_courses(
     page: Annotated[int, Query(ge=1)] = 1,
     pageSize: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> CourseListResponse:
-    """List courses, optionally filtered by level/term/isPractical/search.
-
-    If only level or term is provided, the other defaults to the current value.
-    """
-    semester = None
-    if level is not None or term is not None:
-        semester = Ordinal.to_semester(
-            level or Ordinal.current_level(),
-            term or Ordinal.current_term(),
-        )
-
-    find_query = Course.list_query(semester=semester, is_practical=isPractical)
+    """List courses, optionally filtered by level/term/isPractical/search."""
+    find_query = Course.list_query(level=level, term=term, is_practical=isPractical)
 
     if search:
         candidates = await find_query.to_list()

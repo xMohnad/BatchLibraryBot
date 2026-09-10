@@ -282,7 +282,8 @@ class Course(TimestampMixin, Document):
     def list_query(
         cls,
         *,
-        semester: int | None = None,
+        level: int | None = None,
+        term: int | None = None,
         is_practical: bool | None = None,
         is_deleted: bool | None = False,
     ):
@@ -290,8 +291,18 @@ class Course(TimestampMixin, Document):
         query: dict[object, object] = {}
         if is_deleted is not None:
             query[Course.isDeleted] = is_deleted
-        if semester is not None:
-            query[Course.semester] = semester
+
+        semesters: list[int] | None = None
+        if level is not None and term is not None:
+            semesters = [Ordinal.to_semester(level, term)]
+        elif level is not None:
+            semesters = [Ordinal.to_semester(level, t) for t in (1, 2)]
+        elif term is not None:
+            semesters = [Ordinal.to_semester(lvl, term) for lvl in range(1, 5)]
+
+        if semesters:
+            query[Course.semester] = {"$in": semesters}
+
         if is_practical is not None:
             query[Course.isPractical] = is_practical
 

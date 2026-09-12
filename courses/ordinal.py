@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from enum import Enum
+from enum import IntEnum
 
 from config import SEMESTER_START_YEAR
 
+_SEMESTER_PATTERN = re.compile(r"#الفصل_(\w+)")
 
-class Ordinal(int, Enum):
+
+class Ordinal(IntEnum):
     """Enum representing Arabic ordinal numbers from الأول to الثامن.
 
     Provides helper methods for converting between number and name, as well
@@ -55,10 +57,10 @@ class Ordinal(int, Enum):
         Returns:
             int: The semester number corresponding to the ordinal name.
         """
-        if not text or not (match := re.search(r"#الفصل_(\w+)", text)):
-            return cls.current_semester()
+        if text and (match := _SEMESTER_PATTERN.search(text)):
+            return cls.get_value(match.group(1))
 
-        return cls.get_value(match.group(1))
+        return cls.current_semester()
 
     @classmethod
     def current_semester(cls, date: datetime | None = None, start_year: int = SEMESTER_START_YEAR) -> int:

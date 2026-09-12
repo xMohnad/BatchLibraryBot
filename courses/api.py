@@ -7,7 +7,7 @@ from typing import Annotated
 from aiogram.utils.deep_linking import create_start_link
 from beanie import PydanticObjectId  # noqa: TC002
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from accounts.deps import require_admin, require_course_permission
 from accounts.models import User  # noqa: TC001
@@ -80,7 +80,8 @@ class CourseFileSummary(BaseModel):
 class CourseCreateRequest(BaseModel):
     courseName: str
     tutorName: str
-    semester: int
+    level: Annotated[int, Field(ge=1, le=4)]
+    term: Annotated[int, Field(ge=1, le=2)]
     isPractical: bool
 
 
@@ -88,6 +89,10 @@ class CourseUpdateRequest(BaseModel):
     courseName: str | None = None
     tutorName: str | None = None
     isPractical: bool | None = None
+
+
+class CourseFileRenameRequest(BaseModel):
+    title: Annotated[str, Field(min_length=1)]
 
 
 class CourseDetail(CourseSummary):
@@ -141,10 +146,11 @@ async def list_courses(
 
 @router.post("", response_model=CourseSummary)
 async def create_course(payload: CourseCreateRequest, _admin: Annotated[User, Depends(require_admin)]) -> CourseSummary:
+    semester = Ordinal.to_semester(payload.level, payload.term)
     course = Course(
         courseName=payload.courseName.strip(),
         tutorName=payload.tutorName.strip(),
-        semester=Ordinal(payload.semester),
+        semester=Ordinal(semester),
         isPractical=payload.isPractical,
     )
     await course.insert()
@@ -259,7 +265,7 @@ async def add_course_file(
 async def rename_course_file(
     course_id: PydanticObjectId,
     file_id: int,
-    title: Annotated[str, Query(min_length=1)],
+    payload: CourseFileRenameRequest,
     _user: Annotated[User, Depends(require_course_permission("edit"))],
 ) -> CourseFileSummary:
     course = await _get_course_or_404(course_id)
@@ -267,7 +273,7 @@ async def rename_course_file(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found on this course.")
 
-    file.title = title
+    file.title = payload.title
     await course.save()
     return await CourseFileSummary.from_course_file(file)
 

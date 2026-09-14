@@ -57,7 +57,6 @@ async def on_del_archive(message: Message, replied: Message) -> None:
             action=ActionType.DELETE,
             actor=await Actor.from_telegram_message(message),
             changes=FieldChange.diff(before, file, before.keys()),
-            via_telegram=True,
         )
     else:
         logger.warning("No active file found (message_id=%d)", replied.message_id)

@@ -140,9 +140,6 @@ class AuditLog(Document):
     parentLabel: str | None = None
     """Display label for the parent, kept even if the parent is later renamed/deleted."""
 
-    summary: str
-    """Short human-readable label for the affected entity (course/file/account name)."""
-
     changes: list[FieldChange] = Field(default_factory=list)
     """Field-level before/after values"""
 
@@ -166,7 +163,6 @@ class AuditLog(Document):
         action: ActionType,
         entity_type: EntityType,
         actor: Actor,
-        summary: str,
         entity_id: str | int | PydanticObjectId | None = None,
         parent_id: str | int | PydanticObjectId | None = None,
         parent_label: str | None = None,
@@ -180,7 +176,6 @@ class AuditLog(Document):
             entityId=str(entity_id) if entity_id is not None else None,
             parentId=str(parent_id) if parent_id is not None else None,
             parentLabel=parent_label,
-            summary=summary,
             changes=changes or [],
         )
 
@@ -191,7 +186,6 @@ class AuditLog(Document):
         action: ActionType,
         entity_type: EntityType,
         actor: Actor,
-        summary: str,
         entity_id: str | int | PydanticObjectId | None = None,
         parent_id: str | int | PydanticObjectId | None = None,
         parent_label: str | None = None,
@@ -202,7 +196,6 @@ class AuditLog(Document):
             action=action,
             entity_type=entity_type,
             actor=actor,
-            summary=summary,
             entity_id=entity_id,
             parent_id=parent_id,
             parent_label=parent_label,
@@ -211,7 +204,9 @@ class AuditLog(Document):
         try:
             await entry.insert()
         except Exception:
-            logger.exception("Failed to record audit entry (%s %s: %s)", entry.action, entry.entityType, entry.summary)
+            logger.exception(
+                "Failed to record audit entry (%s %s: %s)", entry.action, entry.entityType, entry.parentLabel
+            )
 
     @classmethod
     async def record_many(cls, entries: list[Self]) -> None:
@@ -230,7 +225,6 @@ class AuditLog(Document):
         actor: Actor,
         changes: list[FieldChange] | None = None,
     ) -> None:
-        verb = {"create": "Created", "update": "Updated", "delete": "Deleted"}[action]
         await cls.record(
             entity_type=EntityType.COURSE,
             action=action,
@@ -238,7 +232,6 @@ class AuditLog(Document):
             entity_id=course.id,
             parent_id=course.id,
             parent_label=course.courseName,
-            summary=f"{verb} course '{course.courseName}' ({course.tutorName})",
             changes=changes,
         )
 
@@ -250,11 +243,7 @@ class AuditLog(Document):
         action: ActionType,
         actor: Actor,
         changes: list[FieldChange] | None = None,
-        *,
-        via_telegram: bool = False,
     ) -> AuditLog:
-        verb = {"create": "Added", "update": "Renamed", "delete": "Deleted"}[action]
-        suffix = " via Telegram" if via_telegram else ""
         return cls.build(
             entity_type=EntityType.COURSE_FILE,
             action=action,
@@ -262,7 +251,6 @@ class AuditLog(Document):
             entity_id=file.archiveTelegramMessageId,
             parent_id=course.id,
             parent_label=course.courseName,
-            summary=f"{verb} file '{file.title}' in course '{course.courseName}'{suffix}",
             changes=changes,
         )
 
@@ -274,8 +262,6 @@ class AuditLog(Document):
         action: ActionType,
         actor: Actor,
         changes: list[FieldChange] | None = None,
-        *,
-        via_telegram: bool = False,
     ) -> None:
         entry = cls.build_file_audit(
             course=course,
@@ -283,10 +269,11 @@ class AuditLog(Document):
             action=action,
             actor=actor,
             changes=changes,
-            via_telegram=via_telegram,
         )
 
         try:
             await entry.insert()
         except Exception:
-            logger.exception("Failed to record audit entry (%s %s: %s)", entry.action, entry.entityType, entry.summary)
+            logger.exception(
+                "Failed to record audit entry (%s %s: %s)", entry.action, entry.entityType, entry.parentLabel
+            )

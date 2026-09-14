@@ -101,7 +101,6 @@ async def set_user_active(
             actor=Actor.from_user(admin),
             entity_id=user.id,
             parent_label=user.username,
-            summary=f"{'Activated' if user.isActive else 'Deactivated'} user '{user.username}'",
             changes=changes,
         )
     return UserSummary.from_user(user)
@@ -150,7 +149,6 @@ async def grant_course_permission(
             entity_id=course_id,
             parent_id=user.id,
             parent_label=user.username,
-            summary=f"Set permission for user '{user.username}' on course '{course.courseName}'",
             changes=changes,
         )
     return UserSummary.from_user(user)
@@ -167,8 +165,6 @@ async def revoke_course_permission(
     await user.save()
 
     if existing:
-        course = await Course.get_cached(course_id)
-        course_name = course.courseName if course else "NOT_FOUND"
         await AuditLog.record(
             action=ActionType.DELETE,
             entity_type=EntityType.PERMISSION,
@@ -176,9 +172,9 @@ async def revoke_course_permission(
             entity_id=course_id,
             parent_id=user.id,
             parent_label=user.username,
-            summary=f"Revoked permission for user '{user.username}' on course '{course_name}'",
             changes=FieldChange.diff(existing, None, ["canAdd", "canEdit"]),
         )
+
     return UserSummary.from_user(user)
 
 
@@ -190,7 +186,6 @@ class AuditLogSummary(BaseModel):
     entityId: str | None
     parentId: str | None
     parentLabel: str | None
-    summary: str
     changes: list[FieldChange]
     createdAt: datetime
 
@@ -205,7 +200,6 @@ class AuditLogSummary(BaseModel):
             entityId=log.entityId,
             parentId=log.parentId,
             parentLabel=log.parentLabel,
-            summary=log.summary,
             changes=log.changes,
             createdAt=log.createdAt,
         )

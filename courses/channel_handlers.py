@@ -70,7 +70,6 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             action=ActionType.UPDATE,
             actor=actor,
             changes=[FieldChange(field="title", before=old_title, after=new_title)],
-            via_telegram=True,
         )
     else:
         file = CourseFile.from_message(message, match)
@@ -87,5 +86,4 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             action=ActionType.CREATE,
             actor=actor,
             changes=FieldChange.diff(None, file, CourseFile.AUDIT_FIELDS),
-            via_telegram=True,
         )

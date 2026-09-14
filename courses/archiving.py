@@ -128,7 +128,6 @@ async def _log_file_upserts(course: Course, new_files: list[CourseFile], actor: 
                 action=ActionType.UPDATE if old_file else ActionType.CREATE,
                 actor=actor,
                 changes=changes,
-                via_telegram=True,
             )
         )
 

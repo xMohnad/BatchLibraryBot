@@ -143,7 +143,7 @@ async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_a
     `False` for posts that already live in the archive channel.
     """
     course_files, course_captions = await CourseFile.group_media_by_course(media_events)
-    actor = await Actor.from_telegram_user(media_events[0].from_user if media_events else None)
+    actor = await Actor.from_telegram_message(media_events[0])
 
     for name, files in course_files.items():
         caption = course_captions[name]

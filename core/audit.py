@@ -15,7 +15,7 @@ from accounts.models import User
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from aiogram.types import User as TelegramUser
+    from aiogram.types import Message
 
     from courses.models import Course, CourseFile
 
@@ -60,47 +60,30 @@ class Actor(BaseModel):
     userId: PydanticObjectId | None = None
     """Linked account id, set when the actor is (or matches) a registered `User`."""
 
-    fullName: str | None = None
-    """Display name: the account's name, or the raw Telegram name if unregistered."""
+    telegramChannel: str | None = None
+    """Display title of the Telegram channel or chat where the action/post occurred."""
 
-    telegramId: int | None = None
-    """Telegram user id, when the actor came from (or is linked to) Telegram."""
-
-    telegramUsername: str | None = None
-    """Telegram @username, when Telegram supplied one."""
+    actorSignature: str | None = None
+    """Author signature attached to a channel post ."""
 
     @classmethod
-    def from_user(cls, user: User, *, source: ActorSource = ActorSource.WEB) -> Actor:
-        """Build an actor from an authenticated, registered account."""
-        return cls(
-            source=source,
-            userId=user.id,
-            fullName=user.fullName,
-            telegramId=user.telegramId,
-            telegramUsername=user.telegramUsername,
-        )
+    def from_user(cls, user: User) -> Actor:
+        """Build an actor instance for an authenticated Web API user."""
+        return cls(source=ActorSource.WEB, userId=user.id)
 
     @classmethod
-    async def from_telegram_user(cls, telegram_user: TelegramUser | None) -> Actor:
-        """Resolve the Telegram sender of an action into an actor.
+    async def from_telegram_message(cls, message: Message) -> Actor:
+        """Resolve a Telegram `Message` into an `Actor`."""
+        user_id: PydanticObjectId | None = None
 
-        Matches against a registered `User` by Telegram ID when possible, so the
-        log links back to the account. Otherwise falls back to the raw Telegram
-        identity (full name + Telegram ID/username). Telegram never attaches
-        sender info to channel posts, so `telegram_user` may be `None` there -
-        that's logged as an unidentifiable actor rather than guessed at.
-        """
-        if telegram_user is None:
-            return cls(source=ActorSource.TELEGRAM, fullName="Unknown (channel post)")
-
-        if user := await User.get_by_telegram_id(telegram_user.id):
-            return cls.from_user(user, source=ActorSource.TELEGRAM)
+        if message.from_user and (user := await User.get_by_telegram_id(message.from_user.id)):
+            user_id = user.id
 
         return cls(
             source=ActorSource.TELEGRAM,
-            fullName=telegram_user.full_name,
-            telegramId=telegram_user.id,
-            telegramUsername=telegram_user.username,
+            userId=user_id,
+            telegramChannel=message.sender_chat.title if message.sender_chat else None,
+            actorSignature=message.author_signature,
         )
 
 

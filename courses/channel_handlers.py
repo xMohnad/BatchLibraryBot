@@ -46,7 +46,7 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
         logger.warning("Course not found for name: %s. Ignoring edit.", course_name)
         return
 
-    actor = await Actor.from_telegram_user(message.from_user)
+    actor = await Actor.from_telegram_message(message)
 
     if file := course.find_file_by_original_id(message.message_id):
         new_title = match.group("title")

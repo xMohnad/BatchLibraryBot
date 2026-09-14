@@ -55,7 +55,7 @@ async def on_del_archive(message: Message, replied: Message) -> None:
             course=course,
             file=file,
             action=ActionType.DELETE,
-            actor=await Actor.from_telegram_user(message.from_user),
+            actor=await Actor.from_telegram_message(message),
             changes=FieldChange.diff(before, file, before.keys()),
             via_telegram=True,
         )
@@ -78,7 +78,7 @@ async def on_edit_archive_reply(
 ) -> None:
     """Handle edit command sent as a reply."""
     logger.info("Edit command (%s) received", message.text)
-    actor = await Actor.from_telegram_user(message.from_user)
+    actor = await Actor.from_telegram_message(message)
 
     if result := await apply_caption_edit(match, replied, actor):
         course, file = result
@@ -100,4 +100,4 @@ async def on_edit_archive_reply(
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
     """Handle direct media edit in channel."""
     logger.info("Direct edit received")
-    await apply_caption_edit(match, message, await Actor.from_telegram_user(message.from_user))
+    await apply_caption_edit(match, message, await Actor.from_telegram_message(message))

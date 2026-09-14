@@ -114,24 +114,19 @@ async def _log_file_upserts(course: Course, new_files: list[CourseFile], actor: 
     if not await course.upsert_files(new_files):
         return
 
-    entries = []
     for file in new_files:
         old_file = old_files.get(file.archiveTelegramMessageId)
         changes = FieldChange.diff(old_file, file, CourseFile.AUDIT_FIELDS)
         if not changes:
             continue
 
-        entries.append(
-            AuditLog.build_file_audit(
-                course=course,
-                file=file,
-                action=ActionType.UPDATE if old_file else ActionType.CREATE,
-                actor=actor,
-                changes=changes,
-            )
+        await AuditLog.record_file(
+            course=course,
+            file=file,
+            action=ActionType.UPDATE if old_file else ActionType.CREATE,
+            actor=actor,
+            changes=changes,
         )
-
-    await AuditLog.record_many(entries)
 
 
 async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_archive_channel: bool) -> None:

@@ -4,7 +4,7 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar
 
 from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, ConfigDict, Field
@@ -157,29 +157,6 @@ class AuditLog(Document):
         ]
 
     @classmethod
-    def build(
-        cls,
-        *,
-        action: ActionType,
-        entity_type: EntityType,
-        actor: Actor,
-        entity_id: str | int | PydanticObjectId | None = None,
-        parent_id: str | int | PydanticObjectId | None = None,
-        parent_label: str | None = None,
-        changes: list[FieldChange] | None = None,
-    ) -> AuditLog:
-        """Construct an entry without persisting it."""
-        return cls(
-            action=action,
-            entityType=entity_type,
-            actor=actor,
-            entityId=str(entity_id) if entity_id is not None else None,
-            parentId=str(parent_id) if parent_id is not None else None,
-            parentLabel=parent_label,
-            changes=changes or [],
-        )
-
-    @classmethod
     async def record(
         cls,
         *,
@@ -192,30 +169,22 @@ class AuditLog(Document):
         changes: list[FieldChange] | None = None,
     ) -> None:
         """Record a single audit-trail entry."""
-        entry = cls.build(
+        entry = cls(
             action=action,
-            entity_type=entity_type,
+            entityType=entity_type,
             actor=actor,
-            entity_id=entity_id,
-            parent_id=parent_id,
-            parent_label=parent_label,
-            changes=changes,
+            entityId=str(entity_id) if entity_id is not None else None,
+            parentId=str(parent_id) if parent_id is not None else None,
+            parentLabel=parent_label,
+            changes=changes or [],
         )
+
         try:
             await entry.insert()
         except Exception:
             logger.exception(
                 "Failed to record audit entry (%s %s: %s)", entry.action, entry.entityType, entry.parentLabel
             )
-
-    @classmethod
-    async def record_many(cls, entries: list[Self]) -> None:
-        """Record several audit-trail entries in a single round trip."""
-        try:
-            if entries:
-                await cls.insert_many(entries)
-        except Exception:
-            logger.exception("Failed to record %d audit entries", len(entries))
 
     @classmethod
     async def record_course(
@@ -236,25 +205,6 @@ class AuditLog(Document):
         )
 
     @classmethod
-    def build_file_audit(
-        cls,
-        course: Course,
-        file: CourseFile,
-        action: ActionType,
-        actor: Actor,
-        changes: list[FieldChange] | None = None,
-    ) -> AuditLog:
-        return cls.build(
-            entity_type=EntityType.COURSE_FILE,
-            action=action,
-            actor=actor,
-            entity_id=file.archiveTelegramMessageId,
-            parent_id=course.id,
-            parent_label=course.courseName,
-            changes=changes,
-        )
-
-    @classmethod
     async def record_file(
         cls,
         course: Course,
@@ -263,17 +213,12 @@ class AuditLog(Document):
         actor: Actor,
         changes: list[FieldChange] | None = None,
     ) -> None:
-        entry = cls.build_file_audit(
-            course=course,
-            file=file,
+        await cls.record(
+            entity_type=EntityType.COURSE_FILE,
             action=action,
             actor=actor,
+            entity_id=file.archiveTelegramMessageId,
+            parent_id=course.id,
+            parent_label=course.courseName,
             changes=changes,
         )
-
-        try:
-            await entry.insert()
-        except Exception:
-            logger.exception(
-                "Failed to record audit entry (%s %s: %s)", entry.action, entry.entityType, entry.parentLabel
-            )

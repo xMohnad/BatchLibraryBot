@@ -8,6 +8,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 
 from config import ARCHIVE_CHANNEL
+from core.audit import ActionType, Actor, AuditLog, FieldChange
 from courses.archiving import apply_caption_edit, ingest_media_batch
 from courses.models import CAPTION_PATTERN, Course, MessageType
 from telegram.filters import IdFilter
@@ -45,9 +46,19 @@ async def on_del_archive(message: Message, replied: Message) -> None:
 
     if result := await Course.find_by_file_archive_id(replied.message_id):
         course, file = result
+        before = {"isDeleted": file.isDeleted}
         file.mark_deleted()
         await course.save()
         logger.info("Marked file (message_id=%d) as deleted in course %r", replied.message_id, course.courseName)
+
+        await AuditLog.record_file(
+            course=course,
+            file=file,
+            action=ActionType.DELETE,
+            actor=await Actor.from_telegram_user(message.from_user),
+            changes=FieldChange.diff(before, file, before.keys()),
+            via_telegram=True,
+        )
     else:
         logger.warning("No active file found (message_id=%d)", replied.message_id)
 
@@ -67,8 +78,9 @@ async def on_edit_archive_reply(
 ) -> None:
     """Handle edit command sent as a reply."""
     logger.info("Edit command (%s) received", message.text)
+    actor = await Actor.from_telegram_user(message.from_user)
 
-    if result := await apply_caption_edit(match, replied):
+    if result := await apply_caption_edit(match, replied, actor):
         course, file = result
         try:
             await replied.edit_caption(caption=course.formatted_info(file.title))
@@ -88,4 +100,4 @@ async def on_edit_archive_reply(
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
     """Handle direct media edit in channel."""
     logger.info("Direct edit received")
-    await apply_caption_edit(match, message)
+    await apply_caption_edit(match, message, await Actor.from_telegram_user(message.from_user))

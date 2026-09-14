@@ -5,6 +5,7 @@ from pymongo import AsyncMongoClient
 
 from accounts.models import PendingRegistration, Session, User
 from config import MONGO_NAME, MONGO_URL
+from core.audit import AuditLog
 from courses.models import Course
 
 client = AsyncMongoClient(MONGO_URL, tz_aware=True)
@@ -25,6 +26,6 @@ async def init_database() -> None:
 
         await init_beanie(
             database=database,
-            document_models=[Course, User, PendingRegistration, Session],
+            document_models=[Course, User, PendingRegistration, Session, AuditLog],
         )
         _db_initialized = True

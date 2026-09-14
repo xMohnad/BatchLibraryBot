@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import FSInputFile, URLInputFile
 
 from config import ARCHIVE_CHANNEL
+from core.audit import ActionType, Actor, AuditLog, FieldChange
 from courses.models import Course, CourseFile
 from courses.uploads import ensure_files_uploaded
 
@@ -93,14 +94,45 @@ async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) 
     return copied_files
 
 
-async def apply_caption_edit(match: re.Match[str], message: Message) -> tuple[Course, CourseFile] | None:
+async def apply_caption_edit(match: re.Match[str], message: Message, actor: Actor) -> tuple[Course, CourseFile] | None:
     """Resolve the course for an edited/replied caption and persist the file update."""
-    if course := await Course.get_course(match.group("course"), match.string):
-        file = CourseFile.from_message(message, match)
-        await course.upsert_files([file])
-        await ensure_files_uploaded(course)
-        logger.info("Updated course with message_id %d", file.archiveTelegramMessageId)
-        return course, file
+    course = await Course.get_course(match.group("course"), match.string)
+    if course is None:
+        return None
+
+    file = CourseFile.from_message(message, match)
+    await _log_file_upserts(course, [file], actor)
+    await ensure_files_uploaded(course)
+    logger.info("Updated course with message_id %d", file.archiveTelegramMessageId)
+
+    return course, file
+
+
+async def _log_file_upserts(course: Course, new_files: list[CourseFile], actor: Actor) -> None:
+    """Upsert `new_files` into `course` and record an audit entry for each add/edit."""
+    old_files = {f.archiveTelegramMessageId: f.model_copy() for f in course.files}
+    if not await course.upsert_files(new_files):
+        return
+
+    entries = []
+    for file in new_files:
+        old_file = old_files.get(file.archiveTelegramMessageId)
+        changes = FieldChange.diff(old_file, file, CourseFile.AUDIT_FIELDS)
+        if not changes:
+            continue
+
+        entries.append(
+            AuditLog.build_file_audit(
+                course=course,
+                file=file,
+                action=ActionType.UPDATE if old_file else ActionType.CREATE,
+                actor=actor,
+                changes=changes,
+                via_telegram=True,
+            )
+        )
+
+    await AuditLog.record_many(entries)
 
 
 async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_archive_channel: bool) -> None:
@@ -111,6 +143,7 @@ async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_a
     `False` for posts that already live in the archive channel.
     """
     course_files, course_captions = await CourseFile.group_media_by_course(media_events)
+    actor = await Actor.from_telegram_user(media_events[0].from_user if media_events else None)
 
     for name, files in course_files.items():
         caption = course_captions[name]
@@ -124,6 +157,6 @@ async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_a
                 logger.info("Parsed 0 file(s) for course '%s'", name)
                 continue
 
-        await course.upsert_files(files)
+        await _log_file_upserts(course, files, actor)
         await ensure_files_uploaded(course)
         logger.info("Parsed %d file(s) for course '%s'", len(files), name)

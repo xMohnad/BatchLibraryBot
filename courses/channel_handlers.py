@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 
 from config import ARCHIVE_CHANNEL, CHANNEL_ID
+from core.audit import ActionType, Actor, AuditLog, FieldChange
 from courses.archiving import copy_to_archive, ingest_media_batch
 from courses.models import CAPTION_PATTERN, Course, CourseFile, MessageType
 from courses.uploads import ensure_files_uploaded
@@ -40,28 +41,51 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
     logger.info("Editing media post")
 
     course_name: str = match.group("course")
-    if course := await Course.get_course(course_name, match.string):
-        if file := course.find_file_by_original_id(message.message_id):
-            new_title = match.group("title")
-            if file.title == new_title:
-                logger.info("Title unchanged for message_id %d, skipping.", file.originalTelegramMessageId)
-                return
-
-            file.title = new_title
-            await bot.edit_message_caption(
-                chat_id=ARCHIVE_CHANNEL,
-                message_id=file.archiveTelegramMessageId,
-                caption=course.formatted_info(file.title),
-            )
-            await course.save()
-            logger.info("Updated title for message_id %d.", file.originalTelegramMessageId)
-        else:
-            file = CourseFile.from_message(message, match)
-            copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
-            file.archiveTelegramMessageId = copied.message_id
-            course.files.append(file)
-            if not await ensure_files_uploaded(course):
-                await course.save()
-            logger.info("Archived new file: message_id %d -> %d.", message.message_id, copied.message_id)
-    else:
+    course = await Course.get_course(course_name, match.string)
+    if course is None:
         logger.warning("Course not found for name: %s. Ignoring edit.", course_name)
+        return
+
+    actor = await Actor.from_telegram_user(message.from_user)
+
+    if file := course.find_file_by_original_id(message.message_id):
+        new_title = match.group("title")
+        if file.title == new_title:
+            logger.info("Title unchanged for message_id %d, skipping.", file.originalTelegramMessageId)
+            return
+
+        old_title = file.title
+        file.title = new_title
+        await bot.edit_message_caption(
+            chat_id=ARCHIVE_CHANNEL,
+            message_id=file.archiveTelegramMessageId,
+            caption=course.formatted_info(file.title),
+        )
+        await course.save()
+        logger.info("Updated title for message_id %d.", file.originalTelegramMessageId)
+
+        await AuditLog.record_file(
+            course=course,
+            file=file,
+            action=ActionType.UPDATE,
+            actor=actor,
+            changes=[FieldChange(field="title", before=old_title, after=new_title)],
+            via_telegram=True,
+        )
+    else:
+        file = CourseFile.from_message(message, match)
+        copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
+        file.archiveTelegramMessageId = copied.message_id
+        course.files.append(file)
+        if not await ensure_files_uploaded(course):
+            await course.save()
+        logger.info("Archived new file: message_id %d -> %d.", message.message_id, copied.message_id)
+
+        await AuditLog.record_file(
+            course=course,
+            file=file,
+            action=ActionType.CREATE,
+            actor=actor,
+            changes=FieldChange.diff(None, file, CourseFile.AUDIT_FIELDS),
+            via_telegram=True,
+        )

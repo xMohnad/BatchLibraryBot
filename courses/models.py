@@ -46,6 +46,8 @@ class MessageType(StrEnum):
 class CourseFile(BaseModel):
     """Represents a file associated with a course."""
 
+    AUDIT_FIELDS: ClassVar[list[str]] = ["title", "originalName", "sizeBytes", "extension"]
+
     id: PydanticObjectId = Field(default_factory=PydanticObjectId)
     """Unique identifier for this file."""
 
@@ -184,6 +186,8 @@ class CourseFile(BaseModel):
 
 class Course(TimestampMixin, Document):
     """Represents a course linked to a subject and its files."""
+
+    AUDIT_FIELDS: ClassVar[list[str]] = ["courseName", "tutorName", "isPractical"]
 
     courseName: str
     """Name of the course or subject."""
@@ -371,27 +375,27 @@ class Course(TimestampMixin, Document):
         return await cls._find_by_file_archive_id_cached(archive_message_id, include_deleted=include_deleted)
 
     async def upsert_files(self, files: list[CourseFile]) -> bool:
-        """Upsert files by archiveTelegramMessageId."""
+        """Upsert files by archiveTelegramMessageId. Returns whether anything changed."""
         files_by_id = {f.archiveTelegramMessageId: f for f in self.files}
-        updated = False
+        changed = False
 
         for f in files:
             existing = files_by_id.get(f.archiveTelegramMessageId)
 
             if not existing:
                 self.files.append(f)
-                updated = True
+                changed = True
                 continue
 
             if existing.title != f.title:
                 existing.title = f.title
-                updated = True
+                changed = True
 
             if existing.fileId != f.fileId:
                 existing.fileId = f.fileId  # expected to change
-                updated = True
+                changed = True
 
-        if updated:
+        if changed:
             await self.save()
 
-        return updated
+        return changed

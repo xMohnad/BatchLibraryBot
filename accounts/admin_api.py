@@ -79,9 +79,7 @@ async def list_users(
 
 
 @router.patch("/users/{user_id}/active", response_model=UserSummary)
-async def set_user_active(
-    user_id: PydanticObjectId, payload: SetActiveRequest, admin: Annotated[User, Depends(require_admin)]
-) -> UserSummary:
+async def set_user_active(user_id: PydanticObjectId, payload: SetActiveRequest) -> UserSummary:
     """Enable/disable an account. Immediately invalidates its ability to log in or refresh."""
     user = await _get_user_or_404(user_id)
     if user.role is Role.ADMIN:
@@ -98,7 +96,6 @@ async def set_user_active(
         await AuditLog.record(
             action=ActionType.UPDATE,
             entity_type=EntityType.ACCOUNT,
-            actor=Actor.from_user(admin),
             entity_id=user.id,
             parent_label=user.username,
             changes=changes,
@@ -118,7 +115,6 @@ async def grant_course_permission(
     user_id: PydanticObjectId,
     course_id: PydanticObjectId,
     payload: GrantPermissionRequest,
-    admin: Annotated[User, Depends(require_admin)],
 ) -> UserSummary:
     """Grant (or update) add/edit permission for one course. Upsert semantics."""
     course = await Course.get_cached(course_id)
@@ -145,7 +141,6 @@ async def grant_course_permission(
         await AuditLog.record(
             action=ActionType.CREATE if existing is None else ActionType.UPDATE,
             entity_type=EntityType.PERMISSION,
-            actor=Actor.from_user(admin),
             entity_id=course_id,
             parent_id=user.id,
             parent_label=user.username,
@@ -155,9 +150,7 @@ async def grant_course_permission(
 
 
 @router.delete("/users/{user_id}/permissions/{course_id}", response_model=UserSummary)
-async def revoke_course_permission(
-    user_id: PydanticObjectId, course_id: PydanticObjectId, admin: Annotated[User, Depends(require_admin)]
-) -> UserSummary:
+async def revoke_course_permission(user_id: PydanticObjectId, course_id: PydanticObjectId) -> UserSummary:
     """Remove a user's access to a specific course and return updated summary."""
     user = await _get_user_or_404(user_id)
     existing = user.permission_for(course_id)
@@ -168,7 +161,6 @@ async def revoke_course_permission(
         await AuditLog.record(
             action=ActionType.DELETE,
             entity_type=EntityType.PERMISSION,
-            actor=Actor.from_user(admin),
             entity_id=course_id,
             parent_id=user.id,
             parent_label=user.username,

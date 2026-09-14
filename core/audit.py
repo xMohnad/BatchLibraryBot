@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pymongo import IndexModel
 
 from accounts.models import User
+from core.context import current_actor
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -162,13 +163,15 @@ class AuditLog(Document):
         *,
         action: ActionType,
         entity_type: EntityType,
-        actor: Actor,
         entity_id: str | int | PydanticObjectId | None = None,
         parent_id: str | int | PydanticObjectId | None = None,
         parent_label: str | None = None,
         changes: list[FieldChange] | None = None,
     ) -> None:
         """Record a single audit-trail entry."""
+        actor = current_actor.get()
+        if not actor:
+            return
         entry = cls(
             action=action,
             entityType=entity_type,
@@ -191,13 +194,11 @@ class AuditLog(Document):
         cls,
         course: Course,
         action: ActionType,
-        actor: Actor,
         changes: list[FieldChange] | None = None,
     ) -> None:
         await cls.record(
             entity_type=EntityType.COURSE,
             action=action,
-            actor=actor,
             entity_id=course.id,
             parent_id=course.id,
             parent_label=course.courseName,
@@ -210,13 +211,11 @@ class AuditLog(Document):
         course: Course,
         file: CourseFile,
         action: ActionType,
-        actor: Actor,
         changes: list[FieldChange] | None = None,
     ) -> None:
         await cls.record(
             entity_type=EntityType.COURSE_FILE,
             action=action,
-            actor=actor,
             entity_id=file.archiveTelegramMessageId,
             parent_id=course.id,
             parent_label=course.courseName,

@@ -8,7 +8,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 
 from config import ARCHIVE_CHANNEL
-from core.audit import ActionType, Actor, AuditLog, FieldChange
+from core.audit import ActionType, AuditLog, FieldChange
 from courses.archiving import apply_caption_edit, ingest_media_batch
 from courses.models import CAPTION_PATTERN, Course, MessageType
 from telegram.filters import IdFilter
@@ -55,7 +55,6 @@ async def on_del_archive(message: Message, replied: Message) -> None:
             course=course,
             file=file,
             action=ActionType.DELETE,
-            actor=await Actor.from_telegram_message(message),
             changes=FieldChange.diff(before, file, before.keys()),
         )
     else:
@@ -77,9 +76,8 @@ async def on_edit_archive_reply(
 ) -> None:
     """Handle edit command sent as a reply."""
     logger.info("Edit command (%s) received", message.text)
-    actor = await Actor.from_telegram_message(message)
 
-    if result := await apply_caption_edit(match, replied, actor):
+    if result := await apply_caption_edit(match, replied):
         course, file = result
         try:
             await replied.edit_caption(caption=course.formatted_info(file.title))
@@ -99,4 +97,4 @@ async def on_edit_archive_reply(
 async def on_edit_archive_direct(message: Message, match: re.Match[str]) -> None:
     """Handle direct media edit in channel."""
     logger.info("Direct edit received")
-    await apply_caption_edit(match, message, await Actor.from_telegram_message(message))
+    await apply_caption_edit(match, message)

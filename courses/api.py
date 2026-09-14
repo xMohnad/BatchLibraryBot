@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from accounts.deps import require_admin, require_course_permission
 from accounts.models import User  # noqa: TC001
-from core.audit import ActionType, Actor, AuditLog, FieldChange
+from core.audit import ActionType, AuditLog, FieldChange
 from core.text_matching import fuzzy_score
 from courses.archiving import TELEGRAM_UPLOAD_LIMIT, send_new_file_to_archive
 from courses.models import FILE_DEEP_LINK_PREFIX, Course, CourseFile
@@ -146,7 +146,7 @@ async def list_courses(
 
 
 @router.post("", response_model=CourseSummary)
-async def create_course(payload: CourseCreateRequest, admin: Annotated[User, Depends(require_admin)]) -> CourseSummary:
+async def create_course(payload: CourseCreateRequest, _admin: Annotated[User, Depends(require_admin)]) -> CourseSummary:
     semester = Ordinal.to_semester(payload.level, payload.term)
     course = Course(
         courseName=payload.courseName.strip(),
@@ -159,7 +159,6 @@ async def create_course(payload: CourseCreateRequest, admin: Annotated[User, Dep
     await AuditLog.record_course(
         course=course,
         action=ActionType.CREATE,
-        actor=Actor.from_user(admin),
         changes=FieldChange.diff(None, course, Course.AUDIT_FIELDS),
     )
 
@@ -188,7 +187,7 @@ async def get_course(course_id: PydanticObjectId) -> CourseDetail:
 async def update_course(
     course_id: PydanticObjectId,
     payload: CourseUpdateRequest,
-    user: Annotated[User, Depends(require_course_permission("edit"))],
+    _user: Annotated[User, Depends(require_course_permission("edit"))],
 ) -> CourseSummary:
     course = await _get_course_or_404(course_id)
     updates = payload.model_dump(exclude_unset=True)
@@ -203,7 +202,6 @@ async def update_course(
         await AuditLog.record_course(
             course=course,
             action=ActionType.UPDATE,
-            actor=Actor.from_user(user),
             changes=changes,
         )
 
@@ -211,7 +209,7 @@ async def update_course(
 
 
 @router.delete("/{course_id}", status_code=204)
-async def delete_course(course_id: PydanticObjectId, admin: Annotated[User, Depends(require_admin)]) -> None:
+async def delete_course(course_id: PydanticObjectId, _admin: Annotated[User, Depends(require_admin)]) -> None:
     """Soft-delete a course."""
     course = await _get_course_or_404(course_id)
     before = {"isDeleted": course.isDeleted}
@@ -221,7 +219,6 @@ async def delete_course(course_id: PydanticObjectId, admin: Annotated[User, Depe
     await AuditLog.record_course(
         course=course,
         action=ActionType.DELETE,
-        actor=Actor.from_user(admin),
         changes=FieldChange.diff(before, course, before.keys()),
     )
 
@@ -231,7 +228,7 @@ async def add_course_file(
     course_id: PydanticObjectId,
     title: Annotated[str, Form(min_length=1)],
     file: Annotated[UploadFile, File()],
-    user: Annotated[User, Depends(require_course_permission("add"))],
+    _user: Annotated[User, Depends(require_course_permission("add"))],
 ) -> CourseFileSummary:
     """Upload a file and archive it on Telegram."""
     if not file.filename:
@@ -290,7 +287,6 @@ async def add_course_file(
         course=course,
         file=course_file,
         action=ActionType.CREATE,
-        actor=Actor.from_user(user),
         changes=FieldChange.diff(None, course_file, CourseFile.AUDIT_FIELDS),
     )
     return await CourseFileSummary.from_course_file(course_file)
@@ -301,7 +297,7 @@ async def rename_course_file(
     course_id: PydanticObjectId,
     file_id: int,
     payload: CourseFileRenameRequest,
-    user: Annotated[User, Depends(require_course_permission("edit"))],
+    _user: Annotated[User, Depends(require_course_permission("edit"))],
 ) -> CourseFileSummary:
     course = await _get_course_or_404(course_id)
     file = course.find_file_by_archive_id(file_id)
@@ -317,7 +313,6 @@ async def rename_course_file(
             course=course,
             file=file,
             action=ActionType.UPDATE,
-            actor=Actor.from_user(user),
             changes=[FieldChange(field="title", before=old_title, after=file.title)],
         )
     return await CourseFileSummary.from_course_file(file)
@@ -327,7 +322,7 @@ async def rename_course_file(
 async def delete_course_file(
     course_id: PydanticObjectId,
     file_id: int,
-    user: Annotated[User, Depends(require_course_permission("edit"))],
+    _user: Annotated[User, Depends(require_course_permission("edit"))],
 ) -> None:
     """Soft-delete a file."""
     course = await _get_course_or_404(course_id)
@@ -343,6 +338,5 @@ async def delete_course_file(
         course=course,
         file=file,
         action=ActionType.DELETE,
-        actor=Actor.from_user(user),
         changes=FieldChange.diff(before, file, before.keys()),
     )

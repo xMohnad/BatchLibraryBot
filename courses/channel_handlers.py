@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram import F, Router
 
 from config import ARCHIVE_CHANNEL, CHANNEL_ID
-from core.audit import ActionType, Actor, AuditLog, FieldChange
+from core.audit import ActionType, AuditLog, FieldChange
 from courses.archiving import copy_to_archive, ingest_media_batch
 from courses.models import CAPTION_PATTERN, Course, CourseFile, MessageType
 from courses.uploads import ensure_files_uploaded
@@ -46,8 +46,6 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
         logger.warning("Course not found for name: %s. Ignoring edit.", course_name)
         return
 
-    actor = await Actor.from_telegram_message(message)
-
     if file := course.find_file_by_original_id(message.message_id):
         new_title = match.group("title")
         if file.title == new_title:
@@ -68,7 +66,6 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             course=course,
             file=file,
             action=ActionType.UPDATE,
-            actor=actor,
             changes=[FieldChange(field="title", before=old_title, after=new_title)],
         )
     else:
@@ -84,6 +81,5 @@ async def on_edit(message: Message, bot: Bot, match: re.Match[str]) -> None:
             course=course,
             file=file,
             action=ActionType.CREATE,
-            actor=actor,
             changes=FieldChange.diff(None, file, CourseFile.AUDIT_FIELDS),
         )

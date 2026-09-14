@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from beanie import Insert, Replace, Save, SaveChanges, Update, before_event
+from beanie import Insert, Update, before_event
 from pydantic import BaseModel, Field
 
 
@@ -21,7 +21,7 @@ class TimestampMixin(BaseModel):
         self.createdAt = datetime.now(UTC)
         self.updatedAt = datetime.now(UTC)
 
-    @before_event(Replace, SaveChanges, Save, Update)
+    @before_event(Update)
     def set_updated_at(self):
         """Refresh `updatedAt` right before the document is saved or replaced."""
         self.updatedAt = datetime.now(UTC)

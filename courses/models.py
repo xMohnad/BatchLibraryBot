@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Self
 
 from async_lru import alru_cache
-from beanie import Document, Insert, PydanticObjectId, Save, Update, after_event
+from beanie import Document, Insert, PydanticObjectId, Update, after_event
 from beanie.operators import In
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
@@ -316,7 +316,7 @@ class Course(TimestampMixin, Document):
         courses = await Course.find(In(Course.id, course_ids)).to_list()
         return {course.id: course for course in courses if course.id is not None}
 
-    @after_event(Insert, Save, Update)
+    @after_event(Insert, Update)
     def _invalidate_caches(self) -> None:
         """Clear every course-related cache whenever a course is created or modified."""
         Course.get_courses_name.cache_clear()

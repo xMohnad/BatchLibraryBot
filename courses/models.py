@@ -10,11 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Self
 
 from async_lru import alru_cache
-from beanie import Document, Insert, PydanticObjectId, Update, after_event
+from beanie import Insert, PydanticObjectId, Update, after_event
 from beanie.operators import In
 from pydantic import BaseModel, Field, model_validator
 from pymongo import IndexModel
 
+from audit.mixin import AuditableDocument, ChildAuditSpec
+from audit.models import EntityType
 from core.mixins import TimestampMixin
 from core.text_matching import resolve_best_match
 from courses.ordinal import Ordinal
@@ -45,6 +47,8 @@ class MessageType(StrEnum):
 
 class CourseFile(BaseModel):
     """Represents a file associated with a course."""
+
+    AUDIT_FIELDS: ClassVar[list[str]] = ["title", "originalName", "sizeBytes", "extension", "isDeleted"]
 
     id: PydanticObjectId = Field(default_factory=PydanticObjectId)
     """Unique identifier for this file."""
@@ -182,8 +186,23 @@ class CourseFile(BaseModel):
         return course_files, course_captions
 
 
-class Course(TimestampMixin, Document):
+class Course(TimestampMixin, AuditableDocument):
     """Represents a course linked to a subject and its files."""
+
+    ENTITY_TYPE: ClassVar[EntityType] = EntityType.COURSE
+    AUDIT_FIELDS: ClassVar[list[str]] = ["courseName", "tutorName", "isPractical", "isDeleted"]
+    LABEL_FIELD: ClassVar[str | None] = "courseName"
+    SOFT_DELETE_FIELD: ClassVar[str | None] = "isDeleted"
+    AUDIT_CHILDREN: ClassVar[list[ChildAuditSpec]] = [
+        ChildAuditSpec(
+            list_attr="files",
+            entity_type=EntityType.COURSE_FILE,
+            audit_fields=CourseFile.AUDIT_FIELDS,
+            key_field="archiveTelegramMessageId",
+            label_field="title",
+            soft_delete_field="isDeleted",
+        )
+    ]
 
     courseName: str
     """Name of the course or subject."""
@@ -204,6 +223,7 @@ class Course(TimestampMixin, Document):
     """Whether this course has been soft-deleted."""
 
     class Settings:
+        use_state_management = True
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("files.archiveTelegramMessageId", 1), ("isDeleted", 1)]),
             IndexModel([("isDeleted", 1), ("semester", 1), ("isPractical", 1), ("courseName", 1)]),

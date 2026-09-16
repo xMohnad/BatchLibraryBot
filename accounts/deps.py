@@ -8,7 +8,9 @@ from fastapi import Cookie, Depends, HTTPException, status
 from jwt.exceptions import InvalidTokenError
 
 from accounts.models import Role, User
+from audit.models import Actor
 from config import JWT_ALGORITHM, JWT_SECRET_KEY
+from core.context import current_actor
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -32,6 +34,7 @@ async def get_current_user(access_token: Annotated[str | None, Cookie()] = None)
     if user is None or not user.isActive:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found or disabled.")
 
+    current_actor.set(Actor.from_user(user))
     return user
 
 

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 
+from core.context import current_actor
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -43,10 +45,33 @@ class MediaMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
-middlewares = [MediaMiddleware]
+class AuditActorMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, object]], Awaitable[object]],
+        event: TelegramObject,
+        data: dict[str, object],
+    ) -> object:
+        from audit.models import Actor
+
+        token = None
+        if isinstance(event, Message):
+            actor = await Actor.from_telegram_message(event)
+            token = current_actor.set(actor)
+
+        try:
+            return await handler(event, data)
+        finally:
+            if token is not None:
+                current_actor.reset(token)
 
 
 def setup_middlewares(dp: Dispatcher) -> None:
-    for middleware in middlewares:
-        dp.channel_post.middleware(middleware())
-        dp.message.middleware(middleware())
+    middlewares = [
+        (AuditActorMiddleware(), [dp.channel_post, dp.edited_channel_post]),
+        (MediaMiddleware(), [dp.channel_post, dp.message]),
+    ]
+
+    for mw, observers in middlewares:
+        for observer in observers:
+            observer.middleware(mw)

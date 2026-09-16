@@ -8,6 +8,8 @@ from beanie import Document, PydanticObjectId
 from pydantic import BaseModel, Field
 from pymongo import IndexModel
 
+from audit.mixin import AuditableDocument, ChildAuditSpec
+from audit.models import EntityType
 from config import (
     REGISTRATION_CODE_RESEND_COOLDOWN_SECONDS,
     REGISTRATION_CODE_TTL_MINUTES,
@@ -29,6 +31,8 @@ class Role(StrEnum):
 class CoursePermission(BaseModel):
     """Grants a USER the ability to add and/or edit material for one specific course."""
 
+    AUDIT_FIELDS: ClassVar[list[str]] = ["canAdd", "canEdit"]
+
     courseId: PydanticObjectId
     """Target course ID."""
 
@@ -39,8 +43,20 @@ class CoursePermission(BaseModel):
     """Allow editing/deleting course content."""
 
 
-class User(TimestampMixin, Document):
+class User(TimestampMixin, AuditableDocument):
     """A registered, Telegram-verified account with a website username/password."""
+
+    ENTITY_TYPE: ClassVar[EntityType] = EntityType.ACCOUNT
+    AUDIT_FIELDS: ClassVar[list[str]] = ["fullName", "isActive"]
+    LABEL_FIELD: ClassVar[str | None] = "username"
+    AUDIT_CHILDREN: ClassVar[list[ChildAuditSpec]] = [
+        ChildAuditSpec(
+            list_attr="permissions",
+            entity_type=EntityType.PERMISSION,
+            audit_fields=CoursePermission.AUDIT_FIELDS,
+            key_field="courseId",
+        )
+    ]
 
     username: str
     """Unique login username (stored lowercase)."""
@@ -76,6 +92,7 @@ class User(TimestampMixin, Document):
     """Account lock expiration time."""
 
     class Settings:
+        use_state_management = True
         indexes: ClassVar[list[IndexModel]] = [
             IndexModel([("username", 1)], unique=True),
             IndexModel([("telegramId", 1)], unique=True),

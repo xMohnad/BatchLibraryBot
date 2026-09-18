@@ -73,6 +73,16 @@ async def send_new_file_to_archive(
         return await bot.send_document(ARCHIVE_CHANNEL, document, caption=caption)
 
 
+async def archive_new_file(bot: Bot, course: Course, file: CourseFile) -> CourseFile:
+    """Copy a single new file into the archive channel, attach it to `course`, and persist it."""
+    copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
+    file.archiveTelegramMessageId = copied.message_id
+    course.files.append(file)
+    if not await ensure_files_uploaded(course):
+        await course.save()
+    return file
+
+
 async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) -> list[CourseFile]:
     """Copy each file into the archive channel, skipping (and logging) failures."""
     copied_files: list[CourseFile] = []

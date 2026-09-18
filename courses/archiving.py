@@ -75,12 +75,18 @@ async def send_new_file_to_archive(
 
 async def archive_new_file(bot: Bot, course: Course, file: CourseFile) -> CourseFile:
     """Copy a single new file into the archive channel, attach it to `course`, and persist it."""
-    copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
-    file.archiveTelegramMessageId = copied.message_id
+    await _copy_and_set_archive_id(bot, course, file)
     course.files.append(file)
     if not await ensure_files_uploaded(course):
         await course.save()
     return file
+
+
+async def _copy_and_set_archive_id(bot: Bot, course: Course, file: CourseFile) -> MessageId:
+    """Helper to copy a single file and set its archiveTelegramMessageId."""
+    copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
+    file.archiveTelegramMessageId = copied.message_id
+    return copied
 
 
 async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) -> list[CourseFile]:
@@ -88,7 +94,7 @@ async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) 
     copied_files: list[CourseFile] = []
     for file in files:
         try:
-            copied = await copy_to_archive(bot, file, course.formatted_info(file.title))
+            await _copy_and_set_archive_id(bot, course, file)
         except TelegramBadRequest:
             logger.exception(
                 "Failed to copy message_id %d to archive; skipping.",
@@ -96,9 +102,10 @@ async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) 
             )
             continue
 
-        file.archiveTelegramMessageId = copied.message_id
         copied_files.append(file)
-        logger.info("Archived new file: message_id %d -> %d.", file.originalTelegramMessageId, copied.message_id)
+        logger.info(
+            "Archived new file: message_id %d -> %d.", file.originalTelegramMessageId, file.archiveTelegramMessageId
+        )
 
     return copied_files
 

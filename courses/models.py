@@ -118,44 +118,45 @@ class CourseFile(BaseModel):
         self.updatedAt = datetime.now(UTC)
 
     @classmethod
-    def from_message(cls, message: Message, match: re.Match[str] | None = None, **kwargs) -> CourseFile:
-        """Build a CourseFile from a Telegram message."""
-        kwargs.setdefault("originalTelegramMessageId", message.message_id)
-        kwargs.setdefault("archiveTelegramMessageId", message.message_id)
-        kwargs.setdefault("fromChatId", message.chat.id)
-        kwargs.setdefault("chatId", message.chat.id)
-        if match is not None:
-            kwargs.setdefault("title", match.group("title"))
-
+    def from_message(cls, message: Message, match: re.Match[str] | None = None, **overrides) -> CourseFile:
+        """Build a CourseFile from a Telegram message, letting `overrides` take precedence over message data."""
         content_type = message.content_type
         file: Audio | TelegramDocument | Video | None = getattr(message, content_type, None)
         if content_type not in MessageType or file is None:
             raise ValueError("Message does not contain a supported file (document, video, or audio).")
 
-        file_size = kwargs.pop("sizeBytes", None) or file.file_size
-        if file_size is None:
+        title = overrides.pop("title", None) or (match.group("title") if match else None)
+        if not title:
+            raise ValueError("Cannot determine file title: no title override or caption match provided.")
+
+        size_bytes = overrides.pop("sizeBytes", None) or file.file_size
+        if size_bytes is None:
             raise ValueError("Telegram did not report a file size for this message.")
 
-        mime_type = kwargs.pop("mimeType", None) or file.mime_type
-        file_name = kwargs.pop("originalName", None) or file.file_name
+        mime_type = overrides.pop("mimeType", None) or file.mime_type
+        file_name = overrides.pop("originalName", None) or file.file_name
         if not file_name:
             guess_extension = mimetypes.guess_extension(mime_type) if mime_type else None
             if guess_extension is None:
                 raise ValueError("Cannot determine file extension")
 
-            file_name = f"{kwargs['title']}{guess_extension}"
+            file_name = f"{title}{guess_extension}"
 
         mime_type = mime_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
-        extension = Path(file_name).suffix.lstrip(".")
         return cls(
+            title=title,
             fileId=file.file_id,
             originalName=file_name,
             mimeType=mime_type,
-            sizeBytes=file_size,
-            extension=extension,
+            sizeBytes=size_bytes,
+            extension=Path(file_name).suffix.lstrip("."),
             telegramMessageType=MessageType(content_type),
-            **kwargs,
+            originalTelegramMessageId=overrides.pop("originalTelegramMessageId", message.message_id),
+            archiveTelegramMessageId=overrides.pop("archiveTelegramMessageId", message.message_id),
+            fromChatId=overrides.pop("fromChatId", message.chat.id),
+            chatId=overrides.pop("chatId", message.chat.id),
+            **overrides,
         )
 
     @classmethod

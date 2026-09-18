@@ -390,26 +390,27 @@ class Course(TimestampMixin, AuditableDocument):
         """
         return await cls._find_by_file_archive_id_cached(archive_message_id, include_deleted=include_deleted)
 
+    UPSERT_TRACKED_FIELDS: ClassVar[tuple[str, ...]] = (*CourseFile.AUDIT_FIELDS, "fileId")
+    """Fields refreshed on an existing file when it reappears in an upsert."""
+
     async def upsert_files(self, files: list[CourseFile]) -> bool:
-        """Upsert files by archiveTelegramMessageId."""
-        files_by_id = {f.archiveTelegramMessageId: f for f in self.files}
+        """Add new files and refresh tracked fields on existing ones, matched by archiveTelegramMessageId."""
+        existing_by_id = {f.archiveTelegramMessageId: f for f in self.files}
         updated = False
 
-        for f in files:
-            existing = files_by_id.get(f.archiveTelegramMessageId)
-
-            if not existing:
-                self.files.append(f)
+        for incoming in files:
+            existing = existing_by_id.get(incoming.archiveTelegramMessageId)
+            if existing is None:
+                self.files.append(incoming)
+                existing_by_id[incoming.archiveTelegramMessageId] = incoming
                 updated = True
                 continue
 
-            if existing.title != f.title:
-                existing.title = f.title
-                updated = True
-
-            if existing.fileId != f.fileId:
-                existing.fileId = f.fileId  # expected to change
-                updated = True
+            for field in self.UPSERT_TRACKED_FIELDS:
+                new_value = getattr(incoming, field)
+                if getattr(existing, field) != new_value:
+                    setattr(existing, field, new_value)
+                    updated = True
 
         if updated:
             await self.save()

@@ -90,27 +90,6 @@ async def _copy_and_set_archive_id(bot: Bot, course: Course, file: CourseFile) -
     return copied
 
 
-async def _copy_course_files(bot: Bot, course: Course, files: list[CourseFile]) -> list[CourseFile]:
-    """Copy each file into the archive channel, skipping (and logging) failures."""
-    copied_files: list[CourseFile] = []
-    for file in files:
-        try:
-            await _copy_and_set_archive_id(bot, course, file)
-        except TelegramBadRequest:
-            logger.exception(
-                "Failed to copy message_id %d to archive; skipping.",
-                file.originalTelegramMessageId,
-            )
-            continue
-
-        copied_files.append(file)
-        logger.info(
-            "Archived new file: message_id %d -> %d.", file.originalTelegramMessageId, file.archiveTelegramMessageId
-        )
-
-    return copied_files
-
-
 async def apply_caption_edit(match: re.Match[str], message: Message) -> tuple[Course, CourseFile] | None:
     """Resolve the course for an edited/replied caption and persist the file update."""
     if course := await Course.get_course(match.group("course"), match.string):
@@ -121,12 +100,12 @@ async def apply_caption_edit(match: re.Match[str], message: Message) -> tuple[Co
         return course, file
 
 
-def group_media_by_course(media_events: list[Message]) -> tuple[dict[str, list[CourseFile]], dict[str, str]]:
-    """Group a batch of media messages (e.g. an album/media group) by course.
+async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_archive_channel: bool) -> None:
+    """Group a batch of channel media by course and persist it.
 
-    Messages in a media group only carry a caption on one item (usually the
-    first), so messages without their own caption fall back to the last
-    message's caption.
+    Set `copy_to_archive_channel=True` for posts coming from the source channel
+    (they still need to be copied into the archive channel first). Set it to
+    `False` for posts that already live in the archive channel.
     """
     default_caption = media_events[-1].caption or ""
     course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
@@ -135,22 +114,9 @@ def group_media_by_course(media_events: list[Message]) -> tuple[dict[str, list[C
     for msg in media_events:
         caption = msg.caption or default_caption
         if match := CAPTION_PATTERN.search(caption):
-            course_title: str = match.group("course")
-            course_file = CourseFile.from_message(msg, match)
-            course_files[course_title].append(course_file)
-            course_captions.setdefault(course_title, caption)
-
-    return course_files, course_captions
-
-
-async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_archive_channel: bool) -> None:
-    """Group a batch of channel media by course and persist it.
-
-    Set `copy_to_archive_channel=True` for posts coming from the source channel
-    (they still need to be copied into the archive channel first). Set it to
-    `False` for posts that already live in the archive channel.
-    """
-    course_files, course_captions = group_media_by_course(media_events)
+            name: str = match.group("course")
+            course_files[name].append(CourseFile.from_message(msg, match))
+            course_captions.setdefault(name, caption)
 
     for name, files in course_files.items():
         caption = course_captions[name]
@@ -159,7 +125,23 @@ async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_a
             continue
 
         if copy_to_archive_channel:
-            files = await _copy_course_files(bot, course, files)
+            copied_files: list[CourseFile] = []
+            for file in files:
+                try:
+                    await _copy_and_set_archive_id(bot, course, file)
+                    copied_files.append(file)
+                    logger.info(
+                        "Archived new file: message_id %d -> %d.",
+                        file.originalTelegramMessageId,
+                        file.archiveTelegramMessageId,
+                    )
+                except TelegramBadRequest:
+                    logger.exception(
+                        "Failed to copy message_id %d to archive; skipping.",
+                        file.originalTelegramMessageId,
+                    )
+
+            files = copied_files
             if not files:
                 logger.info("Parsed 0 file(s) for course '%s'", name)
                 continue

@@ -22,6 +22,8 @@ from core.text_matching import resolve_best_match
 from courses.ordinal import Ordinal
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from aiogram.types import Audio, Message, Video
     from aiogram.types import Document as TelegramDocument
 
@@ -346,24 +348,25 @@ class Course(TimestampMixin, AuditableDocument):
         Course.get_cached.cache_clear()
         Course._find_by_file_archive_id_cached.cache_clear()
 
-    def _find_file(self, attr: str, value: int, *, include_deleted: bool) -> CourseFile | None:
-        """Find a file in this course by matching `attr` against `value`."""
+    def _find_file(self, predicate: Callable[[CourseFile], bool], *, include_deleted: bool) -> CourseFile | None:
+        """Find the first file in this course matching `predicate`.
+
+        Soft-deleted files are skipped unless `include_deleted` is True.
+        """
         files = self.files if include_deleted else self.active_files
-        return next((f for f in files if getattr(f, attr) == value), None)
+        return next((f for f in files if predicate(f)), None)
 
     def find_file_by_original_id(self, original_message_id: int, *, include_deleted: bool = False) -> CourseFile | None:
-        """Find a file in this course by its original (source-channel) message id.
-
-        Soft-deleted files are skipped unless `include_deleted` is True.
-        """
-        return self._find_file("originalTelegramMessageId", original_message_id, include_deleted=include_deleted)
+        """Find a file in this course by its original (source-channel) message id."""
+        return self._find_file(
+            lambda f: f.originalTelegramMessageId == original_message_id, include_deleted=include_deleted
+        )
 
     def find_file_by_archive_id(self, archive_message_id: int, *, include_deleted: bool = False) -> CourseFile | None:
-        """Find a file in this course by its archive message id.
-
-        Soft-deleted files are skipped unless `include_deleted` is True.
-        """
-        return self._find_file("archiveTelegramMessageId", archive_message_id, include_deleted=include_deleted)
+        """Find a file in this course by its archive-channel message id."""
+        return self._find_file(
+            lambda f: f.archiveTelegramMessageId == archive_message_id, include_deleted=include_deleted
+        )
 
     @classmethod
     @alru_cache

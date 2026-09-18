@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import FSInputFile, URLInputFile
 
 from config import ARCHIVE_CHANNEL
-from courses.models import Course, CourseFile
+from courses.models import CAPTION_PATTERN, Course, CourseFile
 from courses.uploads import ensure_files_uploaded
 
 if TYPE_CHECKING:
@@ -120,6 +121,28 @@ async def apply_caption_edit(match: re.Match[str], message: Message) -> tuple[Co
         return course, file
 
 
+def group_media_by_course(media_events: list[Message]) -> tuple[dict[str, list[CourseFile]], dict[str, str]]:
+    """Group a batch of media messages (e.g. an album/media group) by course.
+
+    Messages in a media group only carry a caption on one item (usually the
+    first), so messages without their own caption fall back to the last
+    message's caption.
+    """
+    default_caption = media_events[-1].caption or ""
+    course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
+    course_captions: dict[str, str] = {}
+
+    for msg in media_events:
+        caption = msg.caption or default_caption
+        if match := CAPTION_PATTERN.search(caption):
+            course_title: str = match.group("course")
+            course_file = CourseFile.from_message(msg, match)
+            course_files[course_title].append(course_file)
+            course_captions.setdefault(course_title, caption)
+
+    return course_files, course_captions
+
+
 async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_archive_channel: bool) -> None:
     """Group a batch of channel media by course and persist it.
 
@@ -127,7 +150,7 @@ async def ingest_media_batch(bot: Bot, media_events: list[Message], *, copy_to_a
     (they still need to be copied into the archive channel first). Set it to
     `False` for posts that already live in the archive channel.
     """
-    course_files, course_captions = await CourseFile.group_media_by_course(media_events)
+    course_files, course_captions = group_media_by_course(media_events)
 
     for name, files in course_files.items():
         caption = course_captions[name]

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import mimetypes
 import re
-from collections import defaultdict
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -158,35 +157,6 @@ class CourseFile(BaseModel):
             chatId=overrides.pop("chatId", message.chat.id),
             **overrides,
         )
-
-    @classmethod
-    async def group_media_by_course(
-        cls, media_events: list[Message]
-    ) -> tuple[dict[str, list[CourseFile]], dict[str, str]]:
-        """Group a batch of media messages (e.g. an album/media group) by course.
-
-        Messages in a media group only carry a caption on one item (usually the
-        first), so messages without their own caption fall back to the last
-        message's caption.
-
-        Returns:
-            A tuple of:
-            - course_files: course title -> list of parsed `CourseFile` objects
-            - course_captions: course title -> the caption used to resolve it
-        """
-        default_caption = media_events[-1].caption or ""
-        course_files: defaultdict[str, list[CourseFile]] = defaultdict(list)
-        course_captions: dict[str, str] = {}
-
-        for msg in media_events:
-            caption = msg.caption or default_caption
-            if match := CAPTION_PATTERN.search(caption):
-                course_title: str = match.group("course")
-                course_file = cls.from_message(msg, match)
-                course_files[course_title].append(course_file)
-                course_captions.setdefault(course_title, caption)
-
-        return course_files, course_captions
 
 
 class Course(TimestampMixin, AuditableDocument):
